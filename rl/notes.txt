@@ -20,4 +20,83 @@ CHAPTER UNO (1):
     towards reaching the central goal of the agent
 - modern artificial intelligence is currently looking for methods of 
 search, general principles of continuous learning, and decision making
+- rl considered many subproblems, we do not tell them explicity what subproblems to 
+    try, the agents use their own intuition to explore which subproblems to solve
+- rl addresses the scenario of now knowing exactly what to do and 
+    real-time action selection
+- rl could be a piece of a much larger system, an rl env of
+    a body part could feed its result to the rl env of the entire body
+- rl has been looks at by many disciplines, not just AI 
+- rl most accurately reflects how humans and animals act, and is very apparent in neuroscience and physh
+- 
+
+1.2) examples:
+
+- chess moves
+- adjust parameters of a operation in real time while taking into account multiple different tradeoffs
+- animals in real life
+- all the steps in eating breakfast in real life    
+    - every decision bounded by a goal
+    - each food, must first look for fork, feedback of eyes makes picking up fork possible, then use hand to guide food to eat, done eating, get up, etc 
+- rl involves interaction from a decision-making agent, that agents seeks to accomplish a goal despite there being uncertainty in the enviornment
+- the effect of actions may not always be able to be 
+    fully predicted, so the agent must monitor the response of its env
+    - percentage towards goal is determined by what the agent knows in its current state
+
+- interacting  with the enviornment is essentially for IMPROVING the skills of the agent in that task,
+    the more they interact with it the better they will become in the future
+
+1.3) elements of rl 
+
+- policy, reward signal, value function, and maybe a model
+- policy:
+    - defines the way an agent behaves at a given time
+    - policies can be stochastic, we can specify probabilities for each action
+    - mapping from the enviornment in the current state to the actions it can perform
+
+- reward signal:
+    - the goal of the rl problem
+    - each action will in return send a reward value to the agent
+    - the agent's sole focus is to MAXIMIZE this reward signal over a long period of time
+    - 
+
+value function:
+    - takes into account the rewards in the LONG TERM
+    - takes into account the next states likely to occur next, and calculates the reward for these states combined
+    - total amount agent can expect in the future
+
+- immediate reward signal could be low, but the value function could be very high
+- rewards are viewed as primary and values are viewed as secondary
+    - with no rewards there would be no values
+- however, the final decisions that we take are based on the value of value functions
+- the most important part of RL is the efficient estimation of values
+- model:
+    - models are used for planning, we want to predict future states and future rewards before we actually experience them
+    - 
+- rl env can have both low-level trial and error learning and high-level planning learning
+
+1.4) limitations and scope:
+
+- state: whatever information is available to the agent at a given timeframe
+    - what the agent knows at a given time period
+- book focused on not creating the state, but what actions the agent should take GIVEN the state
+- estimating value functions is NOT required for solving rl problems
+
+1.5) extended example 
+- states: table of states, one for each possible state of the game
+- value function for state A is "better" than value function for state B if our probability
+    of winning in state A is higher
+    - if our state has 3 x's, then our prob of winning is 1
+    - if state has 3 o's, then prob of winning is 0
+    - if neither, prob of winning is .5
+
+- we play many games, most of the time we select states GREEDILY (the states that result in a higher value function)
+- occasionally though, we select states "exploratory", the states that dont have a higher value function
+    for the sole purpose of exploring different moves
+- when we move, we update the previous state's probability to be more accurate to the true probability, since know we can see father ahead
+- temporal difference learning: learning is done based on two different states at 2 successive times
+
+- evolutionary methods BAD: if a player wins, all of the states and NON explored states are deemed good as the player won, but this may not be the calculates
+- with value function, each state along the way can be used for the agent to learner
+    - value function=each state is evaluated
 - 
