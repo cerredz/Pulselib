@@ -99,4 +99,98 @@ value function:
 - evolutionary methods BAD: if a player wins, all of the states and NON explored states are deemed good as the player won, but this may not be the calculates
 - with value function, each state along the way can be used for the agent to learner
     - value function=each state is evaluated
-- 
+- rl enforces the agent to look ahead and not just determine the immediate rewards of its actions
+- reward for rl does not have to the at the end of an episode, it can be before it embeddings
+- you can also apply rl to continuous time problems, not just ones with discrete reward signals
+
+- you can setup rl with even infinately many states, the agent will only explore a small
+    subset of these states but the final result can still "learn" how to solve the problem the best it can
+    - this is a use case for supervised learning combined with rl, need to generalize on 
+        our past experiences to make the best possible ones in the future
+
+- rl can be used with or without the use of models to make decisions
+- model free systems: enviornments do not have any influent on their actions
+- an rl system can be a heirarchical rl system, where each "action" is a seperate 
+    rl system
+
+
+1.6) Summary
+
+- formal framework of rl: states, actions, rewards, 
+- value functions for rl are different from evolutionary methods of rl
+
+
+1.7) History of RL
+
+- one thread of rl was based on trial-and-error in animal learning
+- second thread is value function
+- "optimal control" threa:
+    - first "rl" that solved a problem was known as dynammic programming: the state of the system
+        determined the value that it returned
+    - solved stochastic optimal control problem
+    - the computational requirements grew with the amount of states there where
+    - was not obvious how dp can be used to see thinks FORWARD in time since it always relies on 
+        information in the past
+- optimal control, dp, and rl are very closely intertwined
+- "trial and error" thread:
+    - "law of effect" -> describes the effect of reinforcing events on the tendency to select actions
+    - reinforcement is the strengthening of a behavior based on an animal recieving stimuli
+        - or could also be weakening
+    - reinforcment produced changes in behavior AFTER the reinforce is removed
+    - alan turing "pleasure-pain" system, when pain stimulus occurs all entries are canelled,
+        when pleasure stimulus occurs then they are all made permanent
+    - first employed and tested with animals
+    - rl transitioned in supervised learning, many people thought they were studying rl but were studying   
+        nns and supervised learning (generalizable patterns = sl)
+    - "klopf" is a g that came along and basically said: hey we should more heavily reply on teh 
+        enviornment to learn, rl and supervised learning are different
+    - 
+- "temperal difference" learning/thread:
+    - secondary reinforces are paired with primary reinforces, and whatever behavior the primary
+        reinforce triggers is also inherited down to the secondary reinforcer
+
+questions:
+    1.3) it would learn to play worst because it never explores other moves. These explored other moves
+        that it does not experience could lead to a greater LONG-TERM reward that it will never get to.
+    1.4) two sets of probabilities: 
+        - we learn the exploratory and non-exploratory set
+        - it would be better to learn from exploratory set because we factor in more total
+            possible decision paths
+
+    1.5)
+        -  play a shit ton of games
+        - dont just have all possible states of the tic-tac-toe game, maybe have states whose reward
+            is based off of the previous position/s of the game 
+        - play against all different types of opponents
+        - play multiple games at once, reward is how many games you win in that batch
+
+
+Chapter 2) multi-arm bandit (page 45)
+
+- rl used the evaluation of actions instead of the instruction of actions to learn
+- the feedback of the evaluation is what is necessary for learning in rl, FEEDBACK determines how 
+    good the action was
+- instruction feedback does not take into account the action itself, just the correct action to take
+- evaluation feedback can be combined with instruction feedback
+
+bandit problem:
+- repeatedly faced with n different actions, each with a reward, goal is to get the highest reward 
+    over certain number of steps
+- we do not know the value of the actions beforehand
+- select greedily: select action with the highest current estimated reward
+- select exploringly: do not select the current highest valued action, with the intuition to explore
+    other paths of actions in favor of long-term value benefits
+- if you have many steps remaining, it could be better to actually explore the ungreedy actions because 
+    we dont know if they will produce a higher value or not and we have many steps to go
+- whether it is better to explore or to exploit depends on the estimation of values, uncertainty of 
+    those values, and how many steps are left in the rl algorithms
+- balancing exploration and exploitation is very big challenge in rl, below are some methods to show
+    you the intuitions behind them
+
+action-value methods:
+    - each estimate is a simple average of the sample of relevant rewards
+    - greedy action: A=argmax(Q(t)(a)) -> a maximizes all q at given step T
+    - if we have alot players, and a certain amount of actions, then all actions will theoretically
+        be sampled infinately and the estimated value to converge to the ground truth value
+
+left off on page 50:
