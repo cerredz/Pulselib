@@ -1,0 +1,23 @@
+- state, action, rewards, vectors, weights
+- rl = learning through interactions
+- Capital=random variables, Lowercase=Value of random variable
+- 
+
+CHAPTER UNO (1):
+
+- connecting and interacting with your enviornment is a major source of information
+    - used int the real world to teach humana things
+
+- we are aware of how our enviornment responds to the things that we do
+- rl is focused on "goal-directed" learning from interactions
+- want to maximize the reward signal
+- learner is not told which actions to take, but rather given the reward
+    of the actions and it is up to them to try them out
+- trial-and-error search and delayed reward
+- rl is NOT supervised learning and NOT unsupervised learning
+- agent has to use what it already knows AND explore actions that it has not yet taken
+- subproblems of rl enviornments should play clear roles and actually be steps
+    towards reaching the central goal of the agent
+- modern artificial intelligence is currently looking for methods of 
+search, general principles of continuous learning, and decision making
+- 
