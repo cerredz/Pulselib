@@ -180,7 +180,7 @@ bandit problem:
 - select greedily: select action with the highest current estimated reward
 - select exploringly: do not select the current highest valued action, with the intuition to explore
     other paths of actions in favor of long-term value benefits
-- if you have many steps remaining, it could be better to actually explore the ungreedy actions because 
+- if you have many steps remaining, it could be better to actu  ally explore the ungreedy actions because 
     we dont know if they will produce a higher value or not and we have many steps to go
 - whether it is better to explore or to exploit depends on the estimation of values, uncertainty of 
     those values, and how many steps are left in the rl algorithms
@@ -192,5 +192,6 @@ action-value methods:
     - greedy action: A=argmax(Q(t)(a)) -> a maximizes all q at given step T
     - if we have alot players, and a certain amount of actions, then all actions will theoretically
         be sampled infinately and the estimated value to converge to the ground truth value
-
+    - each action's value is basically the average of the reward of that action experienced
+         in the past
 left off on page 50:
