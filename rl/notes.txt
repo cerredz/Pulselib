@@ -194,4 +194,76 @@ action-value methods:
         be sampled infinately and the estimated value to converge to the ground truth value
     - each action's value is basically the average of the reward of that action experienced
          in the past
-left off on page 50:
+
+
+    - e-greedy parameter: how often we are going to "explore", and not select the best valued action at the time
+        - in armed testbed example, the higher the e-greedy parameter and the more the model "explored", the better it actually got
+    - another thing you can do is to decrease e over time to try to get the best of both worlds (exploring and exploiting)
+    - with noiser rewards, and a bigger variance in reward values, it could take more exploring to actually find the optimal action
+    - rl required balance between exploration and exploitation 
+    - if reward variance is 0 or super low then greedy action might win over exploring, even in deterministic low variance action values
+        we should still explore because the action values could change over time across diffferent steps
+    - 
+
+
+2.4) Incremental Implementation:
+    - explored how we can compute the sampled average of explored rewards in constant time and constant memory
+    - new optimal update rule:
+        - new estimate = old estimate + step_size(target-old estimate)
+    - the step size parameter will change from time step to time step
+    - have arrays Q and N where these arrays are constant in memory (they still use memory, but do not grow), and then we use them to compute 
+        the constant time action values
+
+2.5) Tracking Non-Stationary Problem:
+    - methods discussed prior are appropriate for stationary bandit problems (rewards do not change over time)
+    - often time rl problerms will be nonstationary and rewards will change over time
+    - step size parameter is essentially used to give more weight to more recent rewards and less weight to long "in the past" rewards
+        - the weight will decay exponentially
+    - there are two conditions in stochastic approximation theory that must be satisfied to ensure that the action values have converged
+        to their true values (way of ensuring that we have ran the rl alg enough times with enough selected actions to ensure that they represent
+        their true value)
+        - if estimated continue to vary based on most recent rewards, then the alg has not converged yet
+    - the step size parameter enables constant improvements and smoothing in errors OVER time
+
+2.6) Optimistic Initial values
+
+    - previous methods all assumed an intial estimate
+        - this means that the final outcomes were BIASED toward these initial estimates
+    - multiple benefitial AND unbefitial reasons for initial estimates:
+        - can give the alg some PRIOR KNOWLEDGE of the ground truth values of rewards
+        - becomes a setting that needs to be hand-tweaked by a user
+    - initial action values far from their ground truth values can actually be used as a strategy for exploration
+        - called optimistic initial values approach:
+            - good for stationary problems, is basically a TEMPORARY trick for exploration
+    - if rewards change, nothing can be done to "activate" this exploration again, the beginning only happens once, and we should not place 
+        all of our focus on optizing only the beginning of reward values
+
+
+2.7) Upper confidence bound action selection:
+    - when selecting non-greedy actions and exploring, wouldnt it be best to select the ones that are closest to the maximal action value 
+        and also how confident we are in the actual estimation?
+    - can do this with the upper confidence bound formula (page 57)
+    - the square root term is how uncertain we are in the estimate of a's value, and c is the confidence level of this uncertainty
+    - when we increment the number of times we select action A, the uncertainty of this estimate decreases (bottom term gets bigger)
+        - each time we dont select action A then the uncertainty increases
+    - the most frequently selected actions will have less uncertainty than the least frequently selected actions
+    - the term c is used for the exploration bonus
+
+2.8) Gradient Bandit alg
+
+    - we can also assign a preference to an action seperate of its value, the higher the preference the more often the action is taken
+        - this preference has no correlation to the reward of the action
+    - 
+
+2.9) Associative Search:
+    - so far we have looked at actions that have not changed
+    - there are problems where the actions change depending on the current task
+    - sometimes in a singular rl problem there could be different tasks and for each different task the value of the same action can be different,
+        we need a way to account for this
+
+2.10) Summary
+    - e-greedy method, UCB method, and Gradient bandit method, all discuss different ways of balancing and trying to optimize exploration and 
+        exploitation
+    - only the start of what we are able to do in terms of balancing exploration-exploitation, will explore much more advanced methods 
+        later on in the book
+    - 
