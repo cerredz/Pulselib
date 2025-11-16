@@ -1,0 +1,11 @@
+- explore different reward values for different iterations of the enviornment
+    - typically the rewards should be on the same order of magnitude
+- right not we are plotting/benchmarking the learning curve of the agent, in other words 
+    we are benchmarking the total score of that agent
+
+- more things to benchmark/explore in the future:
+    - episodes per second
+    - asymptotic performance: the final "flat" curve of the total scores
+    - sample efficientcy: the number of episodes it takes the agent to reach this flat line
+    - training stability (how stable the scores are) -> need to do a deeper dive on this on how to actually implement it
+    

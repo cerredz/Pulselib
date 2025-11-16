@@ -205,7 +205,6 @@ action-value methods:
         we should still explore because the action values could change over time across diffferent steps
     - 
 
-
 2.4) Incremental Implementation:
     - explored how we can compute the sampled average of explored rewards in constant time and constant memory
     - new optimal update rule:
@@ -266,4 +265,83 @@ action-value methods:
         exploitation
     - only the start of what we are able to do in terms of balancing exploration-exploitation, will explore much more advanced methods 
         later on in the book
+
+
+CHAPTER 3) SEEMS LIKE A VERY IMPORTANT CHAPTER
+
+- MDP -> instead of just estimating the value of an action (Q(A)), we will know begin to estimate the value of an action given the state Q(S, A)
+- MDPS are mathematically format for rl, and this chapter will explore the applications of MDP and some of the trade-offs
+
+- 3.1) agent environemnt interface
+
+- agent -> the thing that learns and makes decisions
+- enviornment -> the thing that the agent interacts with , carries out the logic of the agent's actions, sets up rewards and returns them to the agent with the new states
+    - agent tries to maximize these rewards
+-  basic process of time steps of the agent-environemnt interation: state 0, action 0, reward 0 -> state 1, action 1, reward 1, etc
+- finite MDP, finite set of states and actions
+    - because states and actions are finite, rewards and future states become a probability distribution
+- in an MDP, the future state and rewards is based only on the direct preceding state and action, this is a RESTRICTION, we want to determine our decisions not only on direct 
+    preceding action and state, but multiple steps back in time (ideally)
+- Markov property: state has information about all prior interactions with the environemnt
+    - formula for probability of S(T) and R(T) based on preceding state and action
+    - formula for probability of random state given preceding state and action
+    - formula for probability of reward given state and action
+
+- actions are very arbitrary, can be low-level actions of high-level actions
+    - could even have an action for "thinking" about the next action to take
+- states work the same way, they can be low level, high level, subjective, etc
+- actions: any decisions we want to learn to make, states: anything we know that could be useful to the decisions we want to make
+
+- in the real world sense, moving a human's arm or leg are not actually the actions, but they are apart of the environemnt, not everything that is physical is an "agent" or action
+    - anything that cannot be changed by the agent is generally considered part of the environemnt (human cannot change how many arms they have, or the length of their arms)
+- in some cases the agent could know EVERYTHING about the environement perfectly, but still struggle to solve the problem
+- agent-environement boundary is typically decided once we determine the actual task we are trying to solve
+    - high-level agent could interact with an eviornment and create the states to then be inputted into a low-level agent to actually do the actions of the high level agent    
+
+- MDP is widely used, it might not be the most optimal for decision-learning problems but many people use it and is the most popular framework for these problems in rl
+- the states and action vary from task to task, and are more of an ART than science
+examples of states and actions:
+    - both states and actions could actually be VECTORS, lists of numbers, rewards however are always singular numbers
     - 
+
+- the MDP framework is not adequate and usable for systems where the agent does not know the full state, it would not satisfy the MARKOV PROPERTY:
+    ex: poker ai player, the agent would not know the full state (other players cards)
+        - fortnite ai player: the game and the entire meta could change and there could be a whole new set of states that are created
+
+- robot example:
+    - states are the battery levels of the robot
+    - the actions are different in each state, when the robot has a high battery we never want it to charge, so we remove this option entirely from the state
+    - the robot gets small rewards when it picks up garbage, but LARGE rewards when it runs out of battery (we never want it to run out of battery)
+
+3.2) GOALS AND rewards
+
+- reward is a simple number over a time step, the goal of the agent is to maximize the TOTAL reward across all time steps
+- reward signals are the formalization of what the agents 'goals' are
+- WE must setup the rewards in a way that makes the agent achieve the actual goals and tasks we want it to achieve (rewards and how we set them up are very important)
+    - rewards signal is basically the way of communicating to the agent
+
+3.3) Returns and episodes:
+    - The expected return is the sum of the rewards across all time steps in an agent-env interaction 
+    - each episode ends in a terminal state, then after this a new starting state is determines for the next episode
+    - the time of termination is usually a random variable that differs from episode to episode, each episode is independent of one another
+    - somtimes the agent-environement problems has "continual tasks" in which the tasks may never end, in this case a problem arises: the total reward  
+        of this task will always approach infinity
+        - introduce discount rate: future rewards are only worth a fraction of what they would be worth at this current time step
+            - intuition for this: remove the ability for the total reward of a task to approach infinity
+    - lets say that the reward for something is the time in which it takes that task to FAIL, in the case where the agent learns alot and gets really good at the task
+        the task could theoretically run forever in the current episode, and this is where we would have to use discounting
+    - 
+
+
+3.5) Policies and Value Functions:
+    - almost all rl algs have way of estimating the reward value of being in current states or how good it is to perform an action where "how good" denotes the estimation
+        of future reward values
+    - value function are defined with particular ways of acting, called policies
+    - policy is a mapping of states to a probability of selecting each possible action
+    - value function and policy can be estimated from experience, however they could end up being parameter if there are many states
+    - bellman equation: the value function is essentially: the sum of (probabilities of all outcomes) * (value of outcomes)
+        - expresses the value of a state and the value of its successor states
+        - starting at a state we have a set of actions, these actions could then create NEW states with new actions, and this could continue happening in successive states
+            - the bellman equation basically estimates the value of ALL of these future states and action pairs
+
+leave off page 83, golf example
