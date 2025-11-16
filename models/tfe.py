@@ -5,7 +5,7 @@ from torch.utils.datasets import DataLoader
 import lightning as L
 import numpy as np
 
-class Agent(nn.module):
+class TFE(nn.module):
     def __init__(self, dropout_rate:int=.3):
         super().__init__()
         self.dropout_rate=dropout_rate
@@ -37,7 +37,7 @@ class Agent(nn.module):
         x=self.l10(x)
         return x
         
-class AgentLightning(L.LightningModule):
+class TFELightning(L.LightningModule):
     def __init__(self, agent, lr: float=1e-3):
         super().__init__()
         self.agent=agent
