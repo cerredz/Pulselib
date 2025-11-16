@@ -9,3 +9,29 @@
     - sample efficientcy: the number of episodes it takes the agent to reach this flat line
     - training stability (how stable the scores are) -> need to do a deeper dive on this on how to actually implement it
     
+- Connecting a NN to 2048 env:
+    - build nn to predict Q(s, a)
+    - starts off shit, random guesses basically
+    - as we play games we accumulate data
+    - this data can then be used to train nn for the game
+    - in theory, our scores will then go up
+    - inputs for NN:
+        - current state (2d array of board, process as 4x4x1 image, lets us used cnns)
+    - outputs:
+        - predicted long term values of taking each one of the actions
+            - output 1: predicted long term value of taking the action "up"
+            - output 2: predicted long term value of taking the action "down", etc
+    - how to create labels? use the bellman equation:
+        - calculate the target of bellman's equation AS the label for the input of the nn
+        - this way our nn will become more accurate at predicting the value of the targets of each action in the corresponding state
+        -    
+     
+    - architecture of nn: make sure to have dropout, activation functions, will make sure to grow paramters and layers as we accumulate more data
+        from more games being played
+        - maybe have some augmentation functions for our data where we try to "diversify" our data, for example: lets say agent picks an invalid move
+            5 times in a row with the same action, only need 1 of this, have script to clean our data  
+        - starting off with 4x4x1 board, going to upsample so we can have more layers
+            - then downsample a little bit, then feed into fully dense layers where we then 
+                predict the value function (4 dimension final outputr\)
+        
+        - 4x4x1 -> 8x8x3 -> 8x8x16 -> 24x24x64 -> 16x16x32 -> 16x16x16 -> 8x8x16 -> 1024x1 -> 384x1 -> 128x1 -> 16x1 -> 4x1 
