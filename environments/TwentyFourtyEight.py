@@ -17,7 +17,7 @@ class Game2048Env(gym.Env):
                 dtype=np.int32              
             )
             self.board = np.zeros((4, 4), dtype=np.int32) 
-            self.total_score = 0 
+            self.total_score = 0
             self.render_mode = 'human'
 
     def _get_obs(self):
@@ -74,7 +74,7 @@ class Game2048Env(gym.Env):
     def step(self, action) -> tuple[np.ndarray, float, bool, bool, dict]:
         """Takes an action, updates the board, calculates the reward, checks if the game is over, and returns (obs, reward, terminated, truncated, info)."""
         # when calling squash function, we must rotate the board according to the direction of the action
-        assert action in self.action_space, f"Invalid action: {action}"       
+        assert action in range(4), f"Invalid action: {action}"       
         rotation_degree={0: (-1, 1), 1: (1, -1),2: (0,0), 3: (2, 2)} 
 
         # rotate board

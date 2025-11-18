@@ -2,22 +2,20 @@ from pathlib import Path
 from collections import deque
 from typing import Deque, Tuple, Any
 import csv
+import random
 
 class ReplayBuffer():
-    def __init__(self, file_path: str):
+    def __init__(self, file_path: str, capacity: int):
         self.file_path=file_path
-        self.replay: Deque[Tuple[Any, Any]]
+        self.buffer = deque(maxlen=capacity)
     
-    def add(self, state: Any, value: Any):
-        self.replay.append((state, value))
+    def add(self, state, action, reward, next_state, done):
+        self.buffer.append((state, action, reward, next_state, done)) 
 
-    def save(self):
-        if not Path.exists(self.file_path):
-            self.file_path.touch()
+    def sample(self, batch_size: int):
+        return random.sample(self.buffer, batch_size)
 
-        with open(self.file_path, 'a', newline='') as csvfile:
-            csv_writer=csv.writer(csvfile)
-            while self.replay:
-                csv_writer.writerow(self.replay.pop())
+    def __len__(self):
+        return len(self.buffer)
                 
         

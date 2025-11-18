@@ -330,8 +330,6 @@ examples of states and actions:
             - intuition for this: remove the ability for the total reward of a task to approach infinity
     - lets say that the reward for something is the time in which it takes that task to FAIL, in the case where the agent learns alot and gets really good at the task
         the task could theoretically run forever in the current episode, and this is where we would have to use discounting
-    - 
-
 
 3.5) Policies and Value Functions:
     - almost all rl algs have way of estimating the reward value of being in current states or how good it is to perform an action where "how good" denotes the estimation
