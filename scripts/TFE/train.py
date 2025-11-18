@@ -16,12 +16,12 @@ from utils.plotting import plot_learning_curve
 import numpy as np
 import torch
 
-NUM_EPISODES=10
+NUM_EPISODES=1000
 ENV_ID = 'Pulse-2048-v1'
 RESULTS_DIR=Path(__file__).parent.parent.parent/"results"/"2048"
 PLOT_FILENAME="random_agent_learning_curve"
 SCORES_FILENAME="scores.csv"
-MODEL_WEIGHTS_FILENAME="tfe_model_weights.pt"
+MODEL_WEIGHTS_FILENAME="tfe_light_model_weights.pt"
 CAPACITY=100000
 LEARN_EVERY=4
 
@@ -33,9 +33,10 @@ if __name__ == "__main__":
     print(config)
 
     # initialize environment, agent, and replay buffer
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     plot_filepath=RESULTS_DIR/PLOT_FILENAME
     env=gym.make(ENV_ID)
-    model=TFELightning(lr=config['learning_rate'])
+    model=TFELightning(lr=config['learning_rate']).to(device)
     if Path.exists(RESULTS_DIR/MODEL_WEIGHTS_FILENAME):
         print('loading model weights...')
         model.load_state_dict(torch.load(RESULTS_DIR/MODEL_WEIGHTS_FILENAME))
@@ -51,6 +52,9 @@ if __name__ == "__main__":
         weight_decay=config['weight_decay'],
         target_update=config['target_update']
     )
+
+    agent.model.to(device)
+    agent.target_model.to(device)
 
     #agent=RandomAgent(action_space=env.action_space)
     buffer=ReplayBuffer(file_path=RESULTS_DIR/SCORES_FILENAME, capacity=CAPACITY)
@@ -71,7 +75,7 @@ if __name__ == "__main__":
             buffer.add(state, action, reward, next_state, terminated)
             state=next_state
             score += reward
-            step += 1   
+            step += 1 
 
             if len(buffer) > agent.batch_size and step % LEARN_EVERY==0:
                 batch=buffer.sample(agent.batch_size)

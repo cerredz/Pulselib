@@ -21,8 +21,9 @@ class DQNAgent():
         self.n_actions=self.action_space.n
         self.target_update=target_update
         self.optimizer=model.configure_optimizers()
-        self.loss_fn=torch.nn.MSELoss()
+        self.loss_fn = torch.nn.SmoothL1Loss()
         self.step_count=0
+        self.device = next(model.parameters()).device
 
     def preprocess_state(self, state: np.ndarray) -> np.ndarray:
         state = np.log2(state + 1).astype(np.float32)
@@ -31,7 +32,7 @@ class DQNAgent():
 
     def action(self, state: np.ndarray) -> int:
         # preprocess state, normalize and turn into tensor
-        state_tensor=torch.from_numpy(self.preprocess_state(state))
+        state_tensor=torch.from_numpy(self.preprocess_state(state)).to(self.device)
         if random.random() < self.epsilon:
             # explore
             action=np.random.randint(0, self.n_actions)
@@ -56,21 +57,20 @@ class DQNAgent():
         dones = np.array([t[4] for t in batch])
 
         # extract the current state and next states (used for model and bellman equation)
-        states_tensor = torch.from_numpy(states).float()
-        next_states_tensor = torch.from_numpy(next_states).float()
+        states_tensor = torch.from_numpy(states).float().to(self.device)
+        next_states_tensor = torch.from_numpy(next_states).float().to(self.device)
 
         self.model.eval()
         with torch.no_grad():
-            current_qs=self.model(states_tensor).numpy()
-            next_qs=self.target_model(next_states_tensor).numpy()
-
+            current_qs=self.model(states_tensor).cpu().numpy()
+            next_qs=self.target_model(next_states_tensor).cpu().numpy()
         max_next_qs = np.max(next_qs, axis=1)
         targets = rewards + self.gamma * max_next_qs * (1 - dones)
 
         target_qs = current_qs.copy()
         target_qs[np.arange(self.batch_size), actions] = targets
-        target_qs_tensor = torch.from_numpy(target_qs).float()
-
+        target_qs_tensor = torch.from_numpy(target_qs).float().to(self.device)
+        
         self.model.train()
         preds = self.model(states_tensor)
         loss = self.loss_fn(preds, target_qs_tensor)

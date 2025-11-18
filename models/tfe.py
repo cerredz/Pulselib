@@ -5,6 +5,24 @@ from torch.utils.data import DataLoader
 import lightning as L
 import numpy as np
 
+class TFELight(nn.Module):
+    def __init__(self, dropout_rate: float = 0.0):  
+        super().__init__()
+        self.gelu = nn.GELU()
+    
+        self.conv1 = nn.Conv2d(1, 16, kernel_size=4, stride=2, padding=1)  
+        self.fc1 = nn.Linear(16 * 2 * 2, 32)  
+        self.out = nn.Linear(32, 4) 
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.gelu(x)
+        x = x.view(x.size(0), -1) 
+        x = self.fc1(x)
+        x = self.gelu(x)
+        x = self.out(x)
+        return x
+
 class TFE(nn.Module):
     def __init__(self, dropout_rate:float=0.3):
         super().__init__()
@@ -41,7 +59,7 @@ class TFELightning(L.LightningModule):
     def __init__(self, lr: float=1e-3):
         super().__init__()
         self.lr = lr
-        self.net = TFE()  # Embed the model
+        self.net = TFELight()  # Embed the model
         self.loss_fn = nn.MSELoss()
 
     def forward(self, x):
