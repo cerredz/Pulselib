@@ -7,33 +7,27 @@ class Game2048Env(gym.Env):
     metadata = {'render_modes': ['human']}
 
     def __init__(self):
-            """Initializes the environment, setting up the action and observation spaces."""
-            super().__init__() 
-            self.action_space = gym.spaces.Discrete(4) # 1) up, 2) down, 3) left, 4) right
-            self.observation_space = gym.spaces.Box(
-                low=0,
-                high=np.inf,
-                shape=(4, 4),
-                dtype=np.int32              
-            )
-            self.board = np.zeros((4, 4), dtype=np.int32) 
-            self.total_score = 0
-            self.render_mode = 'human'
+        super().__init__() 
+        self.action_space = gym.spaces.Discrete(4)
+        self.observation_space = gym.spaces.Box(
+            low=0, high=np.inf, shape=(4, 4), dtype=np.int32              
+        )
+        self.board = np.zeros((4, 4), dtype=np.int32) 
+        self.total_score = 0
+        self.render_mode = 'human'
 
     def _get_obs(self):
-        """Returns the current board state as the observation."""
-        return self.board
+        # FIX 3: Return a COPY to prevent data corruption
+        return self.board.copy()
 
     def _get_info(self):
-        """Returns a dictionary with extra (non-observation) info, like the score."""
         return {"total_score": self.total_score}
 
     def _add_new_tile(self):
-        """Finds an empty cell and adds a new '2' or '4' tile to the board."""
         rows, cols = np.where(self.board == 0)
         if len(rows) == 0: return
         rand_idx = random.choice(range(len(rows)))
-        rand_row, rand_col=rows[rand_idx], cols[rand_idx]
+        rand_row, rand_col = rows[rand_idx], cols[rand_idx]
         self.board[rand_row][rand_col] = 4 if random.random() < .1 else 2
 
     def _squash_row(self, row: np.ndarray) -> Tuple[np.ndarray, int]:
@@ -55,59 +49,62 @@ class Game2048Env(gym.Env):
         return np.array(final_row, dtype=np.int32), step_score
 
     def _is_game_over(self):
-        """Checks if the board is full and no more merges are possible, returning True or False."""
-        board_full=np.all(self.board!=0)
-        horizontal_merges=np.any((self.board[:, :-1] == self.board[:, 1:]) & (self.board[:, :-1] != 0))
-        vertical_merges=np.any((self.board[:-1, :] == self.board[1:, :]) & (self.board[:-1, :] != 0))
-        merges_possible = horizontal_merges or vertical_merges
-        return not merges_possible and board_full
+        board_full = np.all(self.board != 0)
+        if not board_full: return False # Optimization: Quick return
+        
+        horizontal_merges = np.any((self.board[:, :-1] == self.board[:, 1:]) & (self.board[:, :-1] != 0))
+        vertical_merges = np.any((self.board[:-1, :] == self.board[1:, :]) & (self.board[:-1, :] != 0))
+        return not (horizontal_merges or vertical_merges)
 
     def reset(self, seed=None, options=None):
-        """Resets the game to a new starting board and returns the first observation and info."""
         super().reset(seed=seed)
-        self.board=np.zeros((4,4), dtype=np.int32)
-        self.total_score=0
+        self.board = np.zeros((4,4), dtype=np.int32)
+        self.total_score = 0
         self._add_new_tile()
         self._add_new_tile()
         return self._get_obs(), self._get_info()
 
     def step(self, action) -> tuple[np.ndarray, float, bool, bool, dict]:
-        """Takes an action, updates the board, calculates the reward, checks if the game is over, and returns (obs, reward, terminated, truncated, info)."""
-        # when calling squash function, we must rotate the board according to the direction of the action
-        assert action in range(4), f"Invalid action: {action}"       
-        rotation_degree={0: (-1, 1), 1: (1, -1),2: (0,0), 3: (2, 2)} 
+        assert action in range(4), f"Invalid action: {action}"
+        
+        rotation_degree = {
+            0: (1, -1),  # Up
+            1: (-1, 1),  # Down
+            2: (0, 0),   # Left
+            3: (2, 2)    # Right
+        } 
 
-        # rotate board
         original_board = self.board.copy()
-        rotated_board=np.rot90(self.board, k=rotation_degree[action][0])
+        rotated_board = np.rot90(self.board, k=rotation_degree[action][0])
 
-        # game not over, apply action and calculate reward
         new_rotated_board = []
-        step_reward=0
+        step_score = 0 # This is the RAW score (2, 4, 8, 16...)
+        
         for i in range(4):
             new_row, row_score = self._squash_row(rotated_board[i])
             new_rotated_board.append(new_row)
-            step_reward += int(row_score)
+            step_score += int(row_score)
 
-        # rotate board back
         rotated_board = np.array(new_rotated_board, dtype=np.int32)
         self.board = np.rot90(rotated_board, k=rotation_degree[action][1])
-        self.total_score += step_reward
+        
+        self.total_score += step_score
         
         valid_move = not np.array_equal(original_board, self.board)
-        terminated= False
+        terminated = False
+        reward = 0.0 
 
         if valid_move:
+            if step_score > 0:
+                reward = np.log2(step_score)
             self._add_new_tile()
-            terminated=self._is_game_over()
-        if not valid_move:
-            step_reward=-1
-        if terminated: 
-            step_reward=-100
-        return self._get_obs(), step_reward, terminated, False, self._get_info()
+            terminated = self._is_game_over()
+        else:
+            reward = -0.1
+        
+        return self._get_obs(), reward, terminated, False, self._get_info()
 
     def render(self):
-        """Prints a human-readable representation of the board to the console."""
         print("-" * 21) 
         for row in self.board:
             print(f"|{row[0]:^4}|{row[1]:^4}|{row[2]:^4}|{row[3]:^4}|")
@@ -115,5 +112,4 @@ class Game2048Env(gym.Env):
         print(f"Total Score: {self.total_score}\n")
 
     def close(self):
-        """Performs any necessary cleanup (often not needed for simple environments)."""
-        pass # Your logic here
+        pass

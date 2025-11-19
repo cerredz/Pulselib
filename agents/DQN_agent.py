@@ -16,7 +16,7 @@ class DQNAgent():
         self.gamma=gamma
         self.model=model
         self.target_model = TFELightning(lr=model.lr)
-        self.target_model.load_state_dict(model.state_dict())
+        #self.target_model.load_state_dict(model.state_dict())
         self.weight_decay=weight_decay
         self.n_actions=self.action_space.n
         self.target_update=target_update
@@ -46,36 +46,32 @@ class DQNAgent():
         return action
 
     def learn(self, batch: List[Tuple]) -> float:
-        # learning algorithm using bellman's equation
-        # takes in the state, action, reward, and next state and then calculates the 'GROUND TRUTH' values for every item in the batch using the bellman's equation
-    
-        # preprocess data
-        states = np.squeeze(np.stack([self.preprocess_state(t[0]) for t in batch]), axis=1)
-        next_states = np.squeeze(np.stack([self.preprocess_state(t[3]) for t in batch]), axis=1)        
+        states = np.array([t[0] for t in batch])
         actions = np.array([t[1] for t in batch])
         rewards = np.array([t[2] for t in batch])
+        next_states = np.array([t[3] for t in batch])
         dones = np.array([t[4] for t in batch])
-
-        # extract the current state and next states (used for model and bellman equation)
-        states_tensor = torch.from_numpy(states).float().to(self.device)
-        next_states_tensor = torch.from_numpy(next_states).float().to(self.device)
-
-        self.model.eval()
-        with torch.no_grad():
-            current_qs=self.model(states_tensor).cpu().numpy()
-            next_qs=self.target_model(next_states_tensor).cpu().numpy()
-        max_next_qs = np.max(next_qs, axis=1)
-        targets = rewards + self.gamma * max_next_qs * (1 - dones)
-
-        target_qs = current_qs.copy()
-        target_qs[np.arange(self.batch_size), actions] = targets
-        target_qs_tensor = torch.from_numpy(target_qs).float().to(self.device)
         
+        states_tensor = torch.tensor(self.preprocess_state_batch(states), dtype=torch.float32).to(self.device)
+        next_states_tensor = torch.tensor(self.preprocess_state_batch(next_states), dtype=torch.float32).to(self.device)
+        actions_tensor = torch.tensor(actions, dtype=torch.int64).unsqueeze(-1).to(self.device) # Shape (batch, 1)
+        rewards_tensor = torch.tensor(rewards, dtype=torch.float32).unsqueeze(-1).to(self.device) # Shape (batch, 1)
+        dones_tensor = torch.tensor(dones, dtype=torch.float32).unsqueeze(-1).to(self.device)     # Shape (batch, 1)
+
+        with torch.no_grad():
+            next_qs = self.target_model(next_states_tensor)
+            max_next_qs, _ = next_qs.max(dim=1, keepdim=True)
+            target_q_values = rewards_tensor + (self.gamma * max_next_qs * (1 - dones_tensor))
+
         self.model.train()
-        preds = self.model(states_tensor)
-        loss = self.loss_fn(preds, target_qs_tensor)
+        current_qs = self.model(states_tensor)
+        
+        predicted_q_values = current_qs.gather(dim=1, index=actions_tensor)
+        loss = self.loss_fn(predicted_q_values, target_q_values)
+
         self.optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
         self.optimizer.step()
 
         self.step_count += 1
@@ -83,5 +79,10 @@ class DQNAgent():
             self.target_model.load_state_dict(self.model.state_dict())
 
         return loss.item()
+
+    # Helper to vectorize preprocessing
+    def preprocess_state_batch(self, states: np.ndarray) -> np.ndarray:
+        states = np.log2(np.maximum(states, 1)).astype(np.float32)
+        return np.expand_dims(states, axis=1)
         
         

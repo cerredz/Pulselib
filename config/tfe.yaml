@@ -1,9 +1,9 @@
 learning_rate: .001
-epsilon_start: .9
-epsilon_end: .01
-epsilon_decay: .999999
-batch_size: 128
+epsilon_start: .99
+epsilon_end: .001
+epsilon_decay: .9999
+batch_size: 4096
 e_decay_rate: .5
 gamma: .99
-weight_decay: .0001
-target_update: 100
+weight_decay: .001
+target_update: 1000

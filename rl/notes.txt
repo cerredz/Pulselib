@@ -164,7 +164,6 @@ questions:
         - play against all different types of opponents
         - play multiple games at once, reward is how many games you win in that batch
 
-
 Chapter 2) multi-arm bandit (page 45)
 
 - rl used the evaluation of actions instead of the instruction of actions to learn
@@ -195,7 +194,6 @@ action-value methods:
     - each action's value is basically the average of the reward of that action experienced
          in the past
 
-
     - e-greedy parameter: how often we are going to "explore", and not select the best valued action at the time
         - in armed testbed example, the higher the e-greedy parameter and the more the model "explored", the better it actually got
     - another thing you can do is to decrease e over time to try to get the best of both worlds (exploring and exploiting)
@@ -203,7 +201,7 @@ action-value methods:
     - rl required balance between exploration and exploitation 
     - if reward variance is 0 or super low then greedy action might win over exploring, even in deterministic low variance action values
         we should still explore because the action values could change over time across diffferent steps
-    - 
+
 
 2.4) Incremental Implementation:
     - explored how we can compute the sampled average of explored rewards in constant time and constant memory
