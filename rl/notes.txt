@@ -179,7 +179,7 @@ bandit problem:
 - select greedily: select action with the highest current estimated reward
 - select exploringly: do not select the current highest valued action, with the intuition to explore
     other paths of actions in favor of long-term value benefits
-- if you have many steps remaining, it could be better to actu  ally explore the ungreedy actions because 
+- if you have many steps remaining, it could be better to actually explore the ungreedy actions because 
     we dont know if they will produce a higher value or not and we have many steps to go
 - whether it is better to explore or to exploit depends on the estimation of values, uncertainty of 
     those values, and how many steps are left in the rl algorithms
@@ -223,7 +223,6 @@ action-value methods:
     - the step size parameter enables constant improvements and smoothing in errors OVER time
 
 2.6) Optimistic Initial values
-
     - previous methods all assumed an intial estimate
         - this means that the final outcomes were BIASED toward these initial estimates
     - multiple benefitial AND unbefitial reasons for initial estimates:
@@ -234,7 +233,6 @@ action-value methods:
             - good for stationary problems, is basically a TEMPORARY trick for exploration
     - if rewards change, nothing can be done to "activate" this exploration again, the beginning only happens once, and we should not place 
         all of our focus on optizing only the beginning of reward values
-
 
 2.7) Upper confidence bound action selection:
     - when selecting non-greedy actions and exploring, wouldnt it be best to select the ones that are closest to the maximal action value 
@@ -339,5 +337,50 @@ examples of states and actions:
         - expresses the value of a state and the value of its successor states
         - starting at a state we have a set of actions, these actions could then create NEW states with new actions, and this could continue happening in successive states
             - the bellman equation basically estimates the value of ALL of these future states and action pairs
+    - value of an action is determined based off of the reward of the next action, and the reward of all remaining rewards
 
-leave off page 83, golf example
+3.6) Optimal Policies and Optimal Value Functions)
+
+- a policy is greater than another if the epxected reward is greater in all states
+    - there must always exist at least 1 OPTIMAL policy
+- bellman optimality equation: the value of a state under the optimal policy must equal the exected reward from the best action from that state
+- if you already have the optimal value function, then getting the optimal policy function will be very easy, just need to look ahead one step
+    - if you have the optimal value function, then you only need to evaluate short-term values of actions and these actions will be the best long term
+    - a "one step ahead search" will yield the optimal actiuons   
+- if you know the optimal policy you dont even have to look ahead, the current action values will be optimal
+- solving the bellman optimality equation EXPLICITY provides one route to solving the optimal policy, and if you solve the optimal policy then you solve the reinforcement learning problem
+    - most times you will actually not be able to solve this equation, as the computational requirement is just too high
+- when creating different decision making agents/methods, this can essentially be viewed as approximating the bellman's optimality equation
+
+
+3.7) optimality and approximation
+
+- an agent that learns an optimal policy has done very well, but the computational cost of this is often unreachable
+    - think of it as: a constraint/limit is the computational power an agent can use in a single time step
+-  tabular cases: tasks with small finite states, use array or table for each state-action paired
+- rl problem forces us to settle for approximating optimal functions, however there may be very many states with low probabilities that approximating suboptimal states/actions might not actually get us anywhere
+
+3.8) Summary
+
+- agent interacts with environment over a discrete amount of time steps
+- states are information about the environment, actions are the decisions that the agent makes, rewards are the values of the agent's decisions
+- policy: stochastic rule in which the agent selects actions from the enviornment
+- value function is the estimated reward from a state-action pair, optimal value function is the largest estimated reward between state-action pairs at every step of the problem
+
+CHAPTER 4) dynammic programming
+page 95
+
+- can be used to compute optimal policies GIVEN a PERFECT MODEL of a enviornment
+- asume that MDP is finite, and rewards given by a set of probabilities
+- going to read the rest of this chapter later, skipping to chapter 5 for now
+
+CHAPTER 5) Monte Carlo Methods:
+
+- first learning methods for estimating value functions and discovering optimal policies
+- only require experience, only need streams of states, actions, and reward from actual or simulated actions with the environment
+- the model does not need to generate all actions, just needs a sample of actions to begin learning
+- method based on averaging sample returns, estimates are only changed at the end of an episode
+- returns for EACH state-action pair, stationary problems become non-stationary for each action
+
+- average returns from state, the more we visit that state the more accurate the return prediction becomes, the estimation will eventually converge to the actual value of the state-action pair
+-  

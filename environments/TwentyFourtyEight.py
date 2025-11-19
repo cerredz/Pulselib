@@ -92,7 +92,7 @@ class Game2048Env(gym.Env):
         
         valid_move = not np.array_equal(original_board, self.board)
         terminated = False
-        reward = 0.0 
+        reward = 0.0
 
         if valid_move:
             if step_score > 0:
