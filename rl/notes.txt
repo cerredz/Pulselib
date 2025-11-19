@@ -382,5 +382,97 @@ CHAPTER 5) Monte Carlo Methods:
 - method based on averaging sample returns, estimates are only changed at the end of an episode
 - returns for EACH state-action pair, stationary problems become non-stationary for each action
 
+5.1)
+- begin by learning the state-value function for a given policy 
+    - not influencing the actions, just evaluating the current policy for actions
 - average returns from state, the more we visit that state the more accurate the return prediction becomes, the estimation will eventually converge to the actual value of the state-action pair
--  
+- first visit monte carlo: estimates the value of a state under policy p as the average of the FIRST visit to a state under each episode
+    - every visit mc is the same, but we dont JUST use the first occurence of a state in the episode
+- blackjack example:
+    - can be modeled by monte-carlo
+    - the state is based on 2-3 things in the game, 
+    - assume some policy where our action is heuristic based on the value of our cards
+    - is we continue to play this game many times then eventually we will get the REAL values of the state-value function
+        - the state-value function is an approximation but after many games it converges to the real value
+- monte carlo is significantly easier to implement then DP approaches, where all of the probabilities of must be computed beforehand
+- in monte carlo, the root is the state node, below is the entire trajectory of the state, action, reward pairs that follow in that episode
+    - mc diagram only shows the samples in the current episode, but it shows all of them
+- estimates for each state are independent
+- MC is very useful when a person only needs to know the value of a subset of the states, and doesnt need to know all actual values of all states
+
+5.2) Monte Carlo estimation of action values
+
+- prediction of state-action pairs, and not just state values
+- we are going to be estimating the return on a state given an action with policy p
+- now we are visiting state-action pairs instead of just states
+    - a state-action pair is visited if the same state is followed by the same action before 
+- one problem is that not all actions will be explored, which means that we wont get to estimate the value of all state-action pairs
+    - in order to truly learn, we need to evaluate the value of ALL state-action pairs, not just the ones that are currently the best to perform
+    - to do this we must maintain exploration at all times of simulating episodes, if we do this then all state-action pairs will be sampled an infinite
+        amount of times given infinate episodes
+- only other way of exploring all state-action pairs is to use a stochastic policy where all actions have a non-zero probability
+
+5.3) Monte Carlo control
+
+- starting to now consider how we can estimate optimal policies
+- maintain an approximation of a policy AND a value function
+    - changing these two will ultimately make these two better over time
+- have a starting policy, play a bunch of episodes, get the value function of actions, update policy greedily (for each state we select the highest valued action)
+    - basically, every time we improve the policy we are taking a higher action value for the states, so eventually after improving the policy many times
+        we will have the optimal policy, a point where the policy no longer improves because we will be at the optimal action value for each state
+    - when we "play a bunch of episodes", we essentially have to gaurentee that every action is tried in every state
+        - we do this by maintaining exploration over a large amount of episodes (eventually every action will be selected for every state)
+- policy will eventually converge to the optimal policy
+
+- problem: we cant assume infinate episodes for each policy evaluation:
+    solution: stick to the sole idea of RL, approximate the values of the policy, dont need to be exact but run a large amount of episodes so that the bounds
+        of the approximations are small
+
+- people actually used monte carlo es to SOLVE blackjack
+
+5.4) Monte Carlor Without Exploring Starts
+
+on-policy methods: evaluate the policy that is being used to make the decisions
+off policy methods: evaluate a policy that is not being used to generate the data
+
+- on-policy methods start off soft with non-zero probabilities but gradually over time shift to an optimal deterministic policy
+    - can use on-policy fist visit monte carlo to change actions and perform better action over time    
+        - finally getting to the "learn from experience" section of the RL book 
+
+5.5) Off policy Prediction via Importance Sampling:
+
+- on-policy approach has a flaw: it is learning the policies of NON-OPTIMAL policies, and learning policies that are still exploring
+- one approach is to have 2 policies, one policy is solely used to learn and become the optimal policy, the other is solely about exploring
+    - target policy is the policy used to learn
+    - behaviou policy is the one being used to explore
+- on policy methods are simpler, off policy require additional notation and setup
+- off-policy learning is seen as very crucial in the world of learning multi-step predicitive models
+
+- behavioral policy must be stochastic and explore different policies
+    - ex: e-greedy policy
+- target policy can be deterministic
+
+- behavior policy is used for exploring, target policy is used to learn off of the exploring and derive a deteministic optimal policy of the explored
+    action-value pairs
+
+- importance sampling makes sure that the target policy does not learn the bad habits of the behavior policy
+    - inheritly, the behavior policy will make sub-optimal decisions because it is exploring, but we dont want the target policy to learn these bad decicions,
+        only the good ones
+- ordinary weighted sampling has the tendency to produce unstable results as the variance is near infinite
+- 
+
+5.6) Incremental Implementation:
+
+
+5.10 -> summary, skipping to this part in book 
+
+- monte carlo essentially defines "actual learning", you play a game a bunch of times, and after you play a bunch of times you are able to 
+    derive the actual value of certains decisions and actions BECAUSE you played the game a bunch of times
+- monte carlo allows for learning the optimal policies of an environment through experience, which allows the us to have no model that actually knows the 
+    dynamics of the enviornment
+- advanatges of mc: easy to simulate loads of episodes, easy to evaluate a small subset of states
+- we must maintain exploration at all times in monte carlo, we dont want to settle for a sub-optimal policy
+- off policy prediction refers to learning a value function of a target policy genereated by a behvaior policy
+- page 141 leave off on
+
+Chapter 6) Temperal Difference Learning
