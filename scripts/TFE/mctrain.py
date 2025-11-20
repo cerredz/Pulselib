@@ -8,7 +8,6 @@ import gymnasium as gym
 import numpy as np
 from utils.plotting import plot_learning_curve
 from pathlib import Path
-import gc
 
 CONFIG_FILENAME="on_policy_first_visit_monte_carlo.yaml"
 ENV_ID="Pulse-2048-v1"
@@ -28,13 +27,6 @@ if __name__ == "__main__":
     final_scores: List[float]=[]
     steps=0
 
-    env_reset = env.reset
-    env_step = env.step
-    agent_action = agent.action
-    agent_learn = agent.learn
-
-    gc.disable()
-
     for i in range(config["NUM_EPISODES"]):
         raw_state, info = env.reset()
         state = tuple(raw_state.flatten())
@@ -53,13 +45,11 @@ if __name__ == "__main__":
         scores.append(episode_score)
         final_scores.append(total_score["total_score"])
 
-        if i % 1000 == 0:
-            gc.collect()
         
         if i % 50 == 0:
             print(f"Episode {i}: Score: {episode_score}, Avg Score (last 50): {np.mean(scores[-50:]):.2f}, Final score: {final_scores[-1]}")
             
-    plot_learning_curve(scores, plot_filepath, window_size=1000, title="DQN Agent on 2048")
-    plot_learning_curve(final_scores, score_filepath, window_size=1000, title="DQN Agent on 2048")
+    plot_learning_curve(scores, plot_filepath, window_size=5000, title="DQN Agent on 2048")
+    plot_learning_curve(final_scores, score_filepath, window_size=5000, title="DQN Agent on 2048")
 
     print(f"Highest Score: {max(final_scores)}")

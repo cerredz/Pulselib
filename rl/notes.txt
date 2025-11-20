@@ -476,3 +476,50 @@ off policy methods: evaluate a policy that is not being used to generate the dat
 - page 141 leave off on
 
 Chapter 6) Temperal Difference Learning
+
+- temporal difference learning is a NOVEL idea when it comes to reinforcement learning
+    - combines some ideas of dp and monte carlo methods
+- both TD and monte carlo use experience to solve the problem, both will update their policies and estimates from the states of the enviornment
+- monte carlo methods needs to wait until the end of the episode to update prediction estimates, TD only needs to wait until the next time steps
+- TD methods use the current estimate V instead of the true v while also sampling the expected values
+- the TD error is the value of the current estimate of S(t) and the updated estimate
+    - the monte carlo error can be written as a sum of td errors
+        - this identify plays important role in theory and algorithms of TD learning, will prob talk about more later on in the book
+- TD learning can essentially take into account factors of a game WHILE the game goes on, think of it as changing your prediction of the result
+    while the game is occuring BECUASE OF THE THINGS THAT HAPPEN WHILE PLAYING THE GAME
+    - in monte carlo, you need to WAIT until the actual game is over before you can learn anything. But is this necessary? 
+        - humans dont need to wait for game to be over to change their predictions
+
+6.2) advantages of td prediction methods:
+
+- td methods learn a guess from a guess, are they better than DP or monte carlo? rest of book talks about this
+    - learning every time step and not every episode is actually VERY CRUCIAL in terms of reinforcement learning:
+        - sometimes episodes are very long, and sometimes episodes DONT END, there are rl problems where the task is a continuous task
+- it has been proven that TD methods ACTUALLY DO converge to the true optimal value function given a policy
+- does monte carlo or td converge faster:
+    - obv, we want to chose the one that converges faster becomes we will use less compute to solve the rl problem
+    - answer is actually no obv and is still unsolved, depends on the fast at hand
+
+6.3) Optimality of TD(0)
+
+- if there is only a finite amount of time steps, then we can go through all time steps then update, we call this batch updating
+- batch updating:
+    - accumulate a batch/pile/history of episodes
+    - use the episodes to change the value function
+    - when the value function stops changing is when the value function converges
+    - after convergence, we move onto collecting the next batch of episodes
+
+
+6.4) Sarsa: On-Policy TD control
+
+- monte carlo methods often balance exploitaion and exploration, to do this one approach is to use on-policy vs off-policy, this section will discuss
+    on-policy temporal difference
+- first step is to learn an action-value function instead of a state-value function
+    - if state is terminal, value of action-value is 0
+    - otherwise, follows update in book (6.7 page 151)
+- Sarsa algorithm: uses s(t), a(t), r(t+1), s(t+1), a(t+1)
+- on policy is pretty straitforward, use sarsa to continually estimate q, then use these estimates to update our policy, use these new policy estimates to 
+    update the current policy, get better more accurate q's, etc
+- sarsa converges with probability 1 to an optimal policy and action-value function as long as all state-action pairs are visited an infinate number of times
+
+leave off on page 152 with the example 6.5 windy gridworld

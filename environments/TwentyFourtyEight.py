@@ -36,6 +36,7 @@ class Game2048Env(gym.Env):
         new_row = []
         step_score = 0
         i = 0
+        
         while i < len(non_zero):
             if i + 1 < len(non_zero) and non_zero[i] == non_zero[i+1]:
                 merged_tile = non_zero[i] * 2
@@ -94,7 +95,7 @@ class Game2048Env(gym.Env):
             self._add_new_tile()
             terminated = self._is_game_over()
         else:
-            reward = -1
+            reward = -.2
         
         return self._get_obs(), reward, terminated, False, self._get_info()
 
