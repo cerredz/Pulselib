@@ -10,11 +10,12 @@ class Game2048Env(gym.Env):
         super().__init__() 
         self.action_space = gym.spaces.Discrete(4)
         self.observation_space = gym.spaces.Box(
-            low=0, high=np.inf, shape=(4, 4), dtype=np.int32              
+            low=0, high=np.inf, shape=(3, 3), dtype=np.int32              
         )
-        self.board = np.zeros((4, 4), dtype=np.int32) 
+        self.board = np.zeros((3, 3), dtype=np.int32) 
         self.total_score = 0
         self.render_mode = 'human'
+        self.rotations = {0: (1, -1), 1: (-1, 1), 2: (0, 0), 3: (2, 2)}
 
     def _get_obs(self):
         # FIX 3: Return a COPY to prevent data corruption
@@ -45,7 +46,7 @@ class Game2048Env(gym.Env):
                 new_row.append(non_zero[i])
                 i += 1
             
-        final_row = new_row + [0] * (4 - len(new_row))
+        final_row = new_row + [0] * (self.board.shape[1] - len(new_row))
         return np.array(final_row, dtype=np.int32), step_score
 
     def _is_game_over(self):
@@ -58,7 +59,7 @@ class Game2048Env(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self.board = np.zeros((4,4), dtype=np.int32)
+        self.board = np.zeros((3,3), dtype=np.int32)
         self.total_score = 0
         self._add_new_tile()
         self._add_new_tile()
@@ -66,27 +67,20 @@ class Game2048Env(gym.Env):
 
     def step(self, action) -> tuple[np.ndarray, float, bool, bool, dict]:
         assert action in range(4), f"Invalid action: {action}"
-        
-        rotation_degree = {
-            0: (1, -1),  # Up
-            1: (-1, 1),  # Down
-            2: (0, 0),   # Left
-            3: (2, 2)    # Right
-        } 
 
         original_board = self.board.copy()
-        rotated_board = np.rot90(self.board, k=rotation_degree[action][0])
+        rotated_board = np.rot90(self.board, k=self.rotations[action][0])
 
         new_rotated_board = []
         step_score = 0 # This is the RAW score (2, 4, 8, 16...)
         
-        for i in range(4):
+        for i in range(self.board.shape[0]):
             new_row, row_score = self._squash_row(rotated_board[i])
             new_rotated_board.append(new_row)
             step_score += int(row_score)
 
         rotated_board = np.array(new_rotated_board, dtype=np.int32)
-        self.board = np.rot90(rotated_board, k=rotation_degree[action][1])
+        self.board = np.rot90(rotated_board, k=self.rotations[action][1])
         
         self.total_score += step_score
         
@@ -100,7 +94,7 @@ class Game2048Env(gym.Env):
             self._add_new_tile()
             terminated = self._is_game_over()
         else:
-            reward = -0.1
+            reward = -1
         
         return self._get_obs(), reward, terminated, False, self._get_info()
 

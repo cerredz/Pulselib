@@ -35,3 +35,12 @@
                 predict the value function (4 dimension final outputr\)
         
         - 4x4x1 -> 8x8x3 -> 8x8x16 -> 24x24x64 -> 16x16x32 -> 16x16x16 -> 8x8x16 -> 1024x1 -> 384x1 -> 128x1 -> 16x1 -> 4x1 
+
+
+- the nn approach to the 2048 problem was too slow
+- on policy monte carlo also might be too slow
+    - going to reread the textbook and explore the off-policy behavior and target policy approach
+        with the aim and hope that the off-policy approach converges faster and we actually begin to learn
+- ALWAYS make sure that the enviornment is HIGHLY HIGHLY HIGHLY performance optimized
+    as the majority of the "work" by the computer will be in the env.step()
+    function of the rl problem
