@@ -44,3 +44,13 @@
 - ALWAYS make sure that the enviornment is HIGHLY HIGHLY HIGHLY performance optimized
     as the majority of the "work" by the computer will be in the env.step()
     function of the rl problem
+
+- sometimes there will be RL problems with near infinite states (lets say trillions /quadrillions in this case)
+    - a HUGE optimization of these rl problems are to answer this question: "can we phrase and implement the intended rl solution where we minimize
+        the amount of states"
+            - if we CAN do this without effecting the accuracy of the value function then we will converge to the answer faster, we will use less compute, 
+                less time to solve the rl Problem
+            - if not, is there a possitive tradeoff between decreasing states and decreasing accuracy of value function
+                - if states are too big then the answer will never converge, learning will take too long, it is better to learn lets say 50% of the accurate
+                    value function then to never learn at all
+            
