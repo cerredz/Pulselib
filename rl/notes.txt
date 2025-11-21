@@ -600,3 +600,45 @@ model in dyna-q examples is just a table of past experiences, models can be neur
     - they all work with GPI, trying to making the policy better
     - td learning, exhaustive search, monte carlo, and dynammic programming
 
+PART 2 of book:
+
+- second part of book we will begin to explore rl problems with arbitrary large and enourmous state spaces
+- in these problems it is essentially impossible to find optimal policy and value functions, so we need to rely on approximations of these functions
+- in these problems we will often see a new state every /every few time steps, so we need information about previously explored OTHER states
+    to make estimations
+
+- how many experience from a small subset of the state-space be used to make an informed decision about the entire state-space as a whole
+    - idea of function approximation is essentially a translation for "supervised learning"
+-  
+
+CHAPTER 9) On-policy prediction with approximation:
+
+- function approximation value function are represented by a vector of weights, not a table
+- often times we will have way less weights than states, so changing simply 1 weight can change the estimate of many states
+
+9.1) value-function approx  
+
+- what we have been doing up until now is shifting state s toward target update u 
+- have been doing this very trivially, applying small shifts to s that will gradually shift s to u over many episodes
+- pass in all s->u as training examples, and then approximate the value functions based on this data for supervised learning methods
+    - can use anything in sl for function approx, nns, decision trees, multivariate regression, etc
+- not all function approx methods are suitible, and many of these methods are fundamentally different from rl
+
+9.2) The prediction objective
+
+- the objective function when using function approx with rl is essentially to limit the total error calculated based on ALL state predictions
+- this objective function might not actually be the most optimal function to minimize, but it is not clear what a better one would be, so 
+    just assume that this function is optimal at this point in time
+- for many tasks in rl there is no gaurentee that we converge to the optimal value function, and in some cases we may even diverge away from it
+- rest of chap is based on gradient methods for function approx
+
+9.3) Stochastic gradient and semi-gradient methods
+
+- gradient based methods, w is a fixed number of compoenents, and we will be updating this w vector across every single time step
+- our w has limited resources and we need it to generalize over all states
+- stoachastic gradient descent applies a small change to w in the direction that would most likely reduce the VE error after each observed
+    example
+    - SGD looks for where error falls most rapidly, then applies the change to W in the direction of that point
+- 
+
+leave off on page 224
