@@ -509,7 +509,6 @@ Chapter 6) Temperal Difference Learning
     - when the value function stops changing is when the value function converges
     - after convergence, we move onto collecting the next batch of episodes
 
-
 6.4) Sarsa: On-Policy TD control
 
 - monte carlo methods often balance exploitaion and exploration, to do this one approach is to use on-policy vs off-policy, this section will discuss
@@ -521,5 +520,83 @@ Chapter 6) Temperal Difference Learning
 - on policy is pretty straitforward, use sarsa to continually estimate q, then use these estimates to update our policy, use these new policy estimates to 
     update the current policy, get better more accurate q's, etc
 - sarsa converges with probability 1 to an optimal policy and action-value function as long as all state-action pairs are visited an infinate number of times
+- sasa policy can quickly learn DURING the episode
 
-leave off on page 152 with the example 6.5 windy gridworld
+
+6.5) q-learning off policy td control
+
+- a breakthrouh in RL was called q-learning
+    - it estimates the optimal action-value function REGARDLESS of the policy that is being followed
+- 
+
+6.6) Expected Sarsa 
+
+- consider sarsa that also takes into account the probabilities of each action value
+- 
+
+6.7) Maximzation bias and double learning (6766767676766767676676767676767677676767676776766)
+
+- so far we can disucssed the maximization of achieving better target policies
+    - maximization bias: true value of state-action pairs is 0, but the estimated values are above 0 and positive
+    - can happen if q-learing alg learns to take an action early on in the alg, and by the end it will have a certain "bias" toward that action:
+        ex: 
+
+- double learning divides the time steps into 2, flips a coin, and then provides a different update based on that flip
+
+
+6.8) Games afterstates, and other special cases
+
+- afterstates -> evaluates the reward (state-value, action-value, or something other estimate) AFTER the agent has made a move
+- actions are defined by their immediate effects, we need to actually KNOW the immediate effects to use afterstates
+- afterstate method:
+    - policy and afterstate value function interact with each other, and then we decide on-policy or off-policy method and persistently manage exploration
+
+6.9)
+
+- TD methods seperate to monte carlo methods, high level idea though is GENERALIZED POLICY ITERATION
+    - idea that approximal policies and value function should interact in a way that move them BOTH closer to their optimal values
+- TD: simple to implement, computationally inexpensive compared to other methods, generalizes/converges the same way as other learning methods
+- one-step, tabular, and model-free methods
+- TD learning is used in FAR MORE fields that just rl, can be used to essentially predict anything about a dynamic system
+
+
+CHAPTER 7) N-step bootstrapping
+- skip for now
+
+Chapter 8) Planning and Learning with Tabular Methods:
+
+- model-based methods rely on planning while model-free methods stricly rely on learning
+- model: 
+    - anything the agent can use to predict how the enviorment will respond to its actions
+    - model is used to simulate envionment and produce simulated experiences
+
+- state-space planning: search through the state space for an optimal policy
+- plan-state planning: search through the plans
+
+- common overview:
+    - model -> simulated experience -> backup -> values -> policy
+    - 
+
+- planning algs use SIMULATED experince to estimate value function, whereas learning alg used ACTUAL experienec to estimate value functions
+- indirect and direct rl:
+    - both can be computationally expensive, need to have intuitions on when to use either one or both
+    - indirect can make fuller use of a limited amount of experience, can lead to less episodes to converge
+    - direct are much simple and are not effected by the bias of the model
+
+Dyna-Q -> includes planning, acting, model-learning, and direct RL all occuring simultaneously in its process of learning
+- tabular Dyna-q (see page 186)
+model in dyna-q examples is just a table of past experiences, models can be neural nets
+- without the model in this case the agent would only learn after it takes an action, having a model of past experiences can held the agent learn before it 
+    takes an action, and help it perform an action based on past experiences
+
+
+- rollout algs: decision time planning-algorithms
+- many algs used in rl and ai for the "planning phase" of the rl problem
+
+
+- all methods explored in book so far:
+    - they all seek to estimate value function
+    - they all seek to "back up" values along a certain trajectory
+    - they all work with GPI, trying to making the policy better
+    - td learning, exhaustive search, monte carlo, and dynammic programming
+

@@ -1,0 +1,22 @@
+Below are a set of important questions to think about when solving any reinforcement learning problem:
+
+
+- define of return:
+    - is task episodix or continuing, discounted, undiscounted
+
+- action values vs state values vs afterstate values:
+    - what is it that you will be predicting/estimating
+
+- action selection/exploration:
+    - how are you going to mantain exploration vs exploitation tradeoffs
+
+- real vs simulated:
+    - should updates to policy be based on real or simulated experience
+
+- location of updates:
+    - what should actually be updated in the rl task
+    - should state values be updated, action-values be updated, state-action pairs, etc
+    - should you update information about your model
+
+- memory:
+    - how long should information about the updates be retained for 
