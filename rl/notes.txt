@@ -642,3 +642,10 @@ CHAPTER 9) On-policy prediction with approximation:
 - 
 
 leave off on page 224
+
+- next steps for 2048:
+    - optimize our envionment:
+        - use numba, want to learn numba for future python envionments, basically uses c for super fast cpu-based operations
+        - make sure the logic of the envionment is correct
+            - 
+        - think more about how we want to model our rewards
