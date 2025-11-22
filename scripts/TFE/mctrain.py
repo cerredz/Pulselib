@@ -9,6 +9,7 @@ import numpy as np
 from utils.plotting import plot_learning_curve
 from pathlib import Path
 import environments.TFE
+import time  # <--- 1. Added import
 
 CONFIG_FILENAME="on_policy_first_visit_monte_carlo.yaml"
 ENV_ID="Pulse-2048-v2"
@@ -26,7 +27,9 @@ if __name__ == "__main__":
     agent=OnPolicyFirstVisitMC(gamma=config["GAMMA"], epsilon=config["EPSILON"], action_space=env.action_space)
     scores: List[float] = []
     final_scores: List[float]=[]
+    
     steps=0
+    start_time = time.time() # <--- 2. Initialize start time
 
     for i in range(config["NUM_EPISODES"]):
         raw_state, info = env.reset()
@@ -47,7 +50,8 @@ if __name__ == "__main__":
         final_scores.append(total_score["score"])
         
         if i % 5000 == 0:
-            print(f"Episode {i}: Score: {episode_score}, Avg Score (last 50): {np.mean(scores[-50:]):.2f}, Final score: {final_scores[-1]}")
+            # 3. Updated print statement to calculate total steps divided by elapsed time
+            print(f"Episode {i}: Score: {episode_score}, Avg Score (last 50): {np.mean(scores[-50:]):.2f}, Final score: {final_scores[-1]}, Steps/sec: {steps / (time.time() - start_time):.2f}")
             
     plot_learning_curve(scores, plot_filepath, window_size=5000, title="DQN Agent on 2048")
     plot_learning_curve(final_scores, score_filepath, window_size=5000, title="DQN Agent on 2048")

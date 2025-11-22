@@ -1,0 +1,13 @@
+ENV_ID: "Pulse-2048-v2"  
+BOARD_HEIGHT: 3
+BOARD_WIDTH: 3
+NUM_EPISODES: 2000000
+AGENT_ID: "q_learning"
+ALPHA: 0.1
+GAMMA: 0.99
+EPSILON: 0.1 
+REWARD_RESULT_FILENAME: "q_learning_rewards.png"
+SCORES_RESULT_FILENAME: "q_learning_game_scores.png"
+STEPS_RESULT_FILENAME: "q_learning_steps.png"
+SAVE_INTERVAL: 5000
+NUM_ENVS: 16

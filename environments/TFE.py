@@ -16,33 +16,32 @@ from typing import Tuple
 # adds a tile to the 2048 games
 @njit
 def add_tile_numba(board):
-    rows, cols=board.shape
-    empty_rows, empty_cols = [], []
+    rows, cols = board.shape
+    empty_rows = []
+    empty_cols = []
     for r in range(rows):
         for c in range(cols):
             if board[r, c] == 0:
                 empty_rows.append(r)
                 empty_cols.append(c)
     
-    n_empty=len(empty_rows)
-    if n_empty==0: return
+    n_empty = len(empty_rows)
+    if n_empty == 0: return
 
     idx = random.randint(0, n_empty - 1)
+    # Standard 2048 rules: 90% chance of 2
     val = 4 if random.random() > 0.9 else 2
-    target_r = empty_rows[idx]
-    target_c = empty_cols[idx]
-    board[target_r, target_c] = val
+    board[empty_rows[idx], empty_cols[idx]] = val
 
 # numba function to rotate an array for the 2048 board game
+# fills the buffer instead of returning an array
 @njit
-def numba_rotate(board):
+def numba_rotate_with_buffer(board, out_buffer):
     n = board.shape[0]
     m = board.shape[1]
-    res = np.zeros((m, n), dtype=np.int32)
     for i in range(n):
         for j in range(m):
-            res[m - 1 - j, i] = board[i, j]
-    return res
+            out_buffer[m - 1 - j, i] = board[i, j]
 
 # numba function to check if the game is over
 # check for zeros, then check for horizontal merges, then check for vertical merges
@@ -70,43 +69,44 @@ def is_game_over_numba(board):
 # squashes the rows of a 2048 game
 # vectorizes the process so we can squash all rows at once
 # step function will rotate array first, so we assume that we need to squash left
-@guvectorize([(int32[:], int32[:], int32[:])], '(n)->(n),()', nopython=True)
-def squash_row(row, result, score_out):
-    n=row.shape[0]
-    t_idx=0
+# Signature: (n) -> (n), (), ()
+# Inputs: row
+# Outputs: result, score, changed (boolean flag)
+@guvectorize([(int32[:], int32[:], int32[:], int32[:])], '(n)->(n),(),()', nopython=True)
+def squash_row_optimized(row, result, score_out, changed_out):
+    n = row.shape[0]
     score_out[0] = 0
-
-    # zero out result array
+    changed_out[0] = 0 
+    
+    # Clear result
     for i in range(n):
         result[i] = 0
 
-    # single pass compress and merge
-    write_idx=0
-    last_merged=False 
+    write_idx = 0
+    last_merged = False 
     
     for i in range(n):
         val = row[i]
-        
-        # Skip empty tiles
         if val != 0:
-            # Case A: The current slot in result is empty (Start of array)
             if result[write_idx] == 0:
                 result[write_idx] = val
-                
-            # Case B: Merge!
-            # Matches the value at write_idx AND we didn't just create that value via a merge
             elif result[write_idx] == val and not last_merged:
                 merged_val = val * 2
                 result[write_idx] = merged_val
-                # Accumulate score into the output pointer
                 score_out[0] += merged_val 
                 last_merged = True
-                
-            # Case C: No Match (Shift to next slot)
             else:
                 write_idx += 1
                 result[write_idx] = val
                 last_merged = False
+    
+    # Optimization: Check if the row changed
+    # If any element differs, the move was valid (it did something)
+    for i in range(n):
+        if row[i] != result[i]:
+            changed_out[0] = 1
+            break
+
 
 # Define the actual environment of the game that utilizes the numba functions
 class TFE(gym.Env):
@@ -123,6 +123,12 @@ class TFE(gym.Env):
         self.render_mode = 'human'
         self.rotations_needed = {0: 0, 1: 1, 2: 2, 3: 3}
 
+        # PRE-ALLOCATED BUFFERS (Optimization #1)
+        self.rotate_buffer = np.zeros_like(self.board)
+        self.squash_buffer = np.zeros_like(self.board)
+        self.score_buffer = np.zeros(self.n, dtype=np.int32)
+        self.changed_buffer = np.zeros(self.n, dtype=np.int32)
+
     def get_obs(self):
         # return the current state of the environment
         return self.board
@@ -131,10 +137,6 @@ class TFE(gym.Env):
         # return the current score of the game via a dictionary
         return {'score': self.total_score}
 
-    def add_tile(self):
-        # specific 2048 logic helper function, will use the current board and add a tile just like the 2048 game
-        add_tile_numba(self.board)
-
     def is_game_over(self):
         return is_game_over_numba(self.board)
 
@@ -142,33 +144,42 @@ class TFE(gym.Env):
         super().reset(seed=seed)
         self.board=np.zeros((self.n, self.m), dtype=np.int32)
         self.total_score=0
-        self.add_tile()
-        self.add_tile()
+        add_tile_numba(self.board)
+        add_tile_numba(self.board)
         return self.get_obs(), self.get_info()
 
     # core logic of env
     def step(self, action: int) -> Tuple[np.ndarray, int, bool, bool, dict]:
         # rotate board k times
         k = self.rotations_needed[action]
-        working_board = self.board
+        source = self.board
+        target = self.rotate_buffer
+
         for _ in range(k):
-            working_board = numba_rotate(working_board)
+            numba_rotate_with_buffer(source, target)
+            # Swap references
+            temp = source
+            source = target
+            target = temp
         
         # squash tiles and calc step score
-        result_buffer, row_scores = np.zeros_like(working_board), np.zeros(self.n, dtype=np.int32)
-        squash_row(working_board, result_buffer, row_scores)
-        step_score=np.sum(row_scores)
+        squash_row_optimized(source, self.squash_buffer, self.score_buffer, self.changed_buffer)
+        step_score = np.sum(self.score_buffer)
         self.total_score += step_score
 
         # rotate board back
+        source_back = self.squash_buffer
+        target_back = target
         rotations_back = (4 - k) % 4
-        final_board = result_buffer
         for _ in range(rotations_back):
-            final_board = numba_rotate(final_board)
+            numba_rotate_with_buffer(source_back, target_back)
+            temp = source_back
+            source_back = target_back
+            target_back = temp
 
         # assign env board, add tiles, 
-        self.board = final_board
-        self.add_tile()
+        np.copyto(self.board, source_back)
+        add_tile_numba(self.board)
 
         # calc reward, return rl tuple
         reward=0

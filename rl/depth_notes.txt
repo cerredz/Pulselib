@@ -62,4 +62,6 @@ numba for python notes:
     - try to not create dynamic arrays in numba and then return stuff,
         much better way is to pre-fetch / initialize a constant sized array with numpy, pass this numpy array into the numba function,
         and then just update the arrary in the numba function
+    - try not to switch between python and numba alot in the same top-level python function 
+        - try to configure it in a way where the numba is the top-level function and the python just allocates/sets stuff up
     
