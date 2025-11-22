@@ -70,7 +70,7 @@ def is_game_over_numba(board):
 # squashes the rows of a 2048 game
 # vectorizes the process so we can squash all rows at once
 # step function will rotate array first, so we assume that we need to squash left
-@guvectorize([(int32[:], int32[:])], '(n)->(n)', nopython=True)
+@guvectorize([(int32[:], int32[:], int32[:])], '(n)->(n),()', nopython=True)
 def squash_row(row, result, score_out):
     n=row.shape[0]
     t_idx=0
@@ -138,14 +138,13 @@ class TFE(gym.Env):
     def is_game_over(self):
         return is_game_over_numba(self.board)
 
-    def reset(self, seed=None, options=None) -> Tuple(np.dnarray, dict):
-        # resets the environment for a new game, returns the new board and the new information about the environment
+    def reset(self, seed=None, options=None) -> Tuple[np.ndarray, dict]:        # resets the environment for a new game, returns the new board and the new information about the environment
         super().reset(seed=seed)
         self.board=np.zeros((self.n, self.m), dtype=np.int32)
         self.total_score=0
         self.add_tile()
         self.add_tile()
-        return self.get_obs(), self.get_info
+        return self.get_obs(), self.get_info()
 
     # core logic of env
     def step(self, action: int) -> Tuple[np.ndarray, int, bool, bool, dict]:
@@ -174,7 +173,7 @@ class TFE(gym.Env):
         # calc reward, return rl tuple
         reward=0
         if step_score > 0:
-            reward = step_score.bit_length()-1
+            reward = int(step_score).bit_length() - 1
 
         return self.get_obs(), reward, self.is_game_over(), False, self.get_info()
 

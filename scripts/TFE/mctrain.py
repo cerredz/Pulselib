@@ -8,9 +8,10 @@ import gymnasium as gym
 import numpy as np
 from utils.plotting import plot_learning_curve
 from pathlib import Path
+import environments.TFE
 
 CONFIG_FILENAME="on_policy_first_visit_monte_carlo.yaml"
-ENV_ID="Pulse-2048-v1"
+ENV_ID="Pulse-2048-v2"
 RESULTS_DIR=Path(__file__).parent.parent.parent/"results"/"2048" 
 PLOT_FILENAME="fv_monte_carlo_learning_curve" 
 SCORES_FILENAME="fv_monte_carlo_scores"
@@ -21,7 +22,7 @@ if __name__ == "__main__":
     plot_filepath=RESULTS_DIR/PLOT_FILENAME
     score_filepath=RESULTS_DIR/SCORES_FILENAME
 
-    env = gym.make(ENV_ID)
+    env = gym.make(ENV_ID, board_height=3, board_width=3)
     agent=OnPolicyFirstVisitMC(gamma=config["GAMMA"], epsilon=config["EPSILON"], action_space=env.action_space)
     scores: List[float] = []
     final_scores: List[float]=[]
@@ -43,10 +44,9 @@ if __name__ == "__main__":
 
         agent.learn(episode=episode)
         scores.append(episode_score)
-        final_scores.append(total_score["total_score"])
-
+        final_scores.append(total_score["score"])
         
-        if i % 50 == 0:
+        if i % 5000 == 0:
             print(f"Episode {i}: Score: {episode_score}, Avg Score (last 50): {np.mean(scores[-50:]):.2f}, Final score: {final_scores[-1]}")
             
     plot_learning_curve(scores, plot_filepath, window_size=5000, title="DQN Agent on 2048")

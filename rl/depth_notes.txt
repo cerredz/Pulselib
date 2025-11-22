@@ -54,3 +54,12 @@
                 - if states are too big then the answer will never converge, learning will take too long, it is better to learn lets say 50% of the accurate
                     value function then to never learn at all
             
+numba for python notes:
+    - dont mix types 
+    - try to avoid using python lists with numba whenever you can
+    - vectorize:
+        - can input a list/array and then define what to do for each element in that array
+    - try to not create dynamic arrays in numba and then return stuff,
+        much better way is to pre-fetch / initialize a constant sized array with numpy, pass this numpy array into the numba function,
+        and then just update the arrary in the numba function
+    
