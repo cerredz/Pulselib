@@ -43,8 +43,3 @@ def update_q_entry(current_q_vals, action, next_q_vals, alpha, reward, gamma, is
     # Q(S, A) <- Q(S, A) + alpha * [Target - Q(S, A)]
     old_val = current_q_vals[action]
     current_q_vals[action] = old_val + alpha * (target - old_val)
-
-
-
-
-

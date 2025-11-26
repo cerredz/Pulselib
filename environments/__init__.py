@@ -5,3 +5,4 @@ register(
     entry_point='environments.TFE:TFE',
     max_episode_steps=200000 
 )
+
