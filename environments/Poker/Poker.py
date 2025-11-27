@@ -7,7 +7,16 @@ import math
 """
 
 class Poker(gym.Env):
-    def __init__(self):
+    def __init__(self, n: int, sm: int, bb: int):
+        assert n > 1 and n < 10, "Number of players must be between 2 and 9"
+        assert sm > 0 and bb > 0, "Small blind and big blind must be greater than 0"
+        
+        self.action_space=gym.spaces.Discrete(4)
+
+    def _get_obs(self):
+        pass
+    
+    def _get_info(self):
         pass
 
     def reset(self, seed=None, options=None):

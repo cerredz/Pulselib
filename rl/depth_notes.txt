@@ -170,7 +170,9 @@ Implementing a poker enviornment first ideas:
         - final reward function:
             - w_money * delta(ev) + w_strat * 
 
-
+        The Formula in One Paragraph
+        The reward function calculates a score between -50 and +50 that balances financial outcomes with strategic correctness. It starts by computing a "Hybrid Money" value, which averages your theoretical Expected Value (Sklansky dollars) with your actual cash results to dampen the luck of the cards while keeping the agent grounded in reality. It then adds a "Strategy Score" that rewards you for acting in alignment with the math—specifically, folding when your chance of winning is lower than the pot odds offered, or betting when your equity exceeds the fair share. Finally, it squashes this combined raw score using a hyperbolic tangent function (scaled by K) to ensure that all rewards stay within a fixed range, preventing exploding gradients and stabilizing the neural network's learning process.
+        
         - scaling stats:
             - assume 5,000,000 steps per second with parrallization (think i can get this higher)
             - assume 50 steps per game in the worse case (think this will be around 20 per game)
@@ -179,5 +181,21 @@ Implementing a poker enviornment first ideas:
                 - 360,000,000 games per hour
                 - 
 
-        - state space:
-            - board, our cards, 
+        - state space: below will be the order in which we will represent things in our state
+            - board -> 5 ints
+            - our cards -> 2 ints
+            - stage in game (preflop, flop, turn, river) -> 1 int, 0-3
+            - position -> 1 int (from button)
+            - pot size -> 1 float (normalized with blind size)
+            - our money -> 1 int (normalized with blind size)
+            - opponent info: 
+                -> n player ints * 3
+                    - 1 int for player status (0 for foled, 1 for active)
+                    - 1 int for opponent stack size (big blinds)
+                    - 1 int for opponent current round bet size
+
+                    
+            - bet -> 1 int (the amount we NEED to bet to stay in, could be 0 for just calling)
+
+        - action space:
+            - fold, call, check, bet 25%, bet 33%, bet 50%, bet 75%, bet 100%, 150%, 200%, 300%, all in
