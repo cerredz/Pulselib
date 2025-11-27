@@ -119,6 +119,8 @@ Implementing a poker enviornment first ideas:
 
         - learning strat / how we are going to do rewards:
             - tricky question to tackle and find out which one is optimal
+            
+            
             - do we start off with agent playing against another random agent?
                 - could win but only on the fact that the other agent makes a bad move
                 - based on idea that both agents will continuously get better, each making the other better
@@ -128,5 +130,41 @@ Implementing a poker enviornment first ideas:
                 - what if experienced agent is not optimal, our agent might learn to play against unoptimal opponents
                     or could get "hardstuck" up until a certain skill level
             
+            - in a game of n players, we can have n agents each playing against each other and learning while playing
+            -  
+            
             - do we even need opponents/other agents when calculating reward?
+            - we can try to play alot of games, feed data into nn, then continue playing games with that nn and updating it from there
+
+            - how are we going to compute rewards if the pot ends at the end of each game?
+                - in our simulations we know everyones hands, maybe we compute reward based on if they would win at the current time
+                    - this could punish a player for winning a hand (losing at the current time)
+                - compute reward based on the current probability of winning
+                    - could punish agent for winning, but it learns to play off of favorable probabilities, which is essentially what we want
+                        - dont want something that learns to win every time (going all in every time to try to win hand), just want something to win over the long term
+                    - if we can compute probability at current time do we need rl?
+                        - yes, even if same probability of winning it could still be in different state
+                - could compute rewards for the longer that it is in the game
+                    - like every step it survives is +1
+                    - is very simple and could work, just fear that it will take too long to converge
+                    - actually nvm, we also have to account that there are times where we DONT want to survive a long time (if we have 7-2 off)
                 
+                - i have the intuition that we should use the information of the other players cards to derive the reward value of a step
+                    - although this agent will not have this information at run time, the intuition is that by deriving the reward from other players
+                        this will allow us to gain a "better and more accurate" reward signal which will lead to the agent playing better
+                            - we dont actually need to know the other players hands when making decisions, just need to know the reward of each action in each state
+                - also need the reward to promote folding/ending their run in the game at the right times
+                    - remember, sometimes the optimal and "winning" play is to lose the pot because the odds are not in our favor 
+                
+                
+                - after consulting with gemini, there are multiple ways we can shape our reward, I think the best way to go 
+                    is to shape the rewards based off of the probabilitie/have our agent learn the probabilities
+
+
+        - scaling stats:
+            - assume 5,000,000 steps per second with parrallization (think i can get this higher)
+            - assume 50 steps per game in the worse case (think this will be around 20 per game)
+            - this will bring us to 100,000 games per second
+                - 6,000,000 games per minute
+                - 360,000,000 games per hour
+                -  
