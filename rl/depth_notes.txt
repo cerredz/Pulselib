@@ -160,6 +160,16 @@ Implementing a poker enviornment first ideas:
                 - after consulting with gemini, there are multiple ways we can shape our reward, I think the best way to go 
                     is to shape the rewards based off of the probabilitie/have our agent learn the probabilities
 
+                - more reward ideas:
+                    - money won in pot, money won in last n pots, 
+                
+        - BREAKTHROUGH REWARD IDEA:
+            - base the reward off of probability AND money made
+            - base the reward off of the EXPECTED reward
+
+        - final reward function:
+            - w_money * delta(ev) + w_strat * 
+
 
         - scaling stats:
             - assume 5,000,000 steps per second with parrallization (think i can get this higher)
@@ -167,4 +177,7 @@ Implementing a poker enviornment first ideas:
             - this will bring us to 100,000 games per second
                 - 6,000,000 games per minute
                 - 360,000,000 games per hour
-                -  
+                - 
+
+        - state space:
+            - board, our cards, 

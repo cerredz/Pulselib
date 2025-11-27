@@ -1,6 +1,7 @@
 # utility functions for our poker environment
 import enum
 import numpy as np
+import math
 
 class Cards(enum.Enum):
     ACE_OF_CLUBS=1
@@ -78,6 +79,29 @@ class Deck():
         return self.deck # shape: (52, 1)
 
 
+def poker_reward(
+        w1: float,
+        w2: float,
+        n:int, 
+        K: float,
+        equity: float, 
+        pot: float, 
+        investment: float,
+        stack: float, # amount of money won or lost
+        cost_to_call: float,
+        fair_share: float, 
+        action_type: int
+    ):
+    m=.5*((equity*pot)-investment)+.5*(stack)
+    o=cost_to_call / (pot + cost_to_call)
+    if action_type==0: # calling
+        s=(equity-o)*pot
+    elif action_type==1: # folding
+        s=(o-equity)*pot
+    else: # raising/betting
+        s=equity - fair_share * pot * 1.2
+    r=n * math.tanh((w1*m+w2*s)/K)
+    return r
 
 
 
