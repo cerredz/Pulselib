@@ -1,11 +1,12 @@
 from environments.Poker.utils import PlayerStatus
 from environments.Poker.Player import Player
-import gynasium as gym
+import gymnasium as gym
 import numpy as np
 from typing import List, Any
-from utils import Round
+from environments.Poker.utils import Round
 import random
 import math
+import eval7
 
 """
 - Poker environment implementation for rl:
@@ -40,10 +41,12 @@ class Poker(gym.Env):
 
         self.sm=sm
         self.bb=bb
+        self.deck=eval7.Deck()
         self.round=Round.PREFLOP
-        self.board=None
-        self.pot_size=None
-        self.button_position=None
+
+        self.board=[]
+        self.pot_size=0
+        self.button_position=random.randint(0, self.n-1)
         self.curr_idx=self.button_position
         self.players=[Player(blinds=starting_bbs, current_round_bet=0, status=PlayerStatus.ACTIVE) for _ in range(self.n)]
 
@@ -51,7 +54,7 @@ class Poker(gym.Env):
     def _get_obs(self):
         our_cards=self.players[self.curr_idx].cards
         our_money=self.players[self.curr_idx].blinds
-        position=math.abs(self.curr_idx - self.button_position)
+        position=abs(self.curr_idx - self.button_position)
         opponent_info=np.concatenate([np.array(self.players[i].status, self.players[i].blinds, self.players[i].current_round_bet) for i in range(self.n) if i != self.curr_idx])
         state=np.concatenate(self.board, our_cards, self.round, position, self.pot_size//self.bb, our_money, opponent_info)
         return state
@@ -61,9 +64,27 @@ class Poker(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        pass
+        self.board=[]
+        self.round=Round.PREFLOP
+        self.pot_size=0
+        self.button_position = self.button_position + 1 % self.n
+        self.curr_idx=self.button_position
 
     def step(self, action):
-        assert action < 13 and action > 0, 'invalid action idx (0-12)'
-
+        assert 0 <= action < self.NUM_ACTIONS, 'invalid action idx (0-11)'
         
+        
+
+
+
+if __name__ == "__main__":
+    deck = eval7.Deck()
+    print(deck)
+    deck.shuffle()
+    hand = deck.deal(7)
+    print(hand)
+    hr = eval7.HandRange("AJ+, ATs, KQ+, 33-JJ, 0.8(QQ+, KJs)")
+    print(len(hr))
+    print(deck.deal(5))
+    deck.shuffle()
+    print(deck)
