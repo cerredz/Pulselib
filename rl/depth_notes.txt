@@ -156,7 +156,6 @@ Implementing a poker enviornment first ideas:
                 - also need the reward to promote folding/ending their run in the game at the right times
                     - remember, sometimes the optimal and "winning" play is to lose the pot because the odds are not in our favor 
                 
-                
                 - after consulting with gemini, there are multiple ways we can shape our reward, I think the best way to go 
                     is to shape the rewards based off of the probabilitie/have our agent learn the probabilities
 
@@ -179,7 +178,6 @@ Implementing a poker enviornment first ideas:
             - this will bring us to 100,000 games per second
                 - 6,000,000 games per minute
                 - 360,000,000 games per hour
-                - 
 
         - state space: below will be the order in which we will represent things in our state
             - board -> 5 ints
@@ -193,9 +191,61 @@ Implementing a poker enviornment first ideas:
                     - 1 int for player status (0 for foled, 1 for active)
                     - 1 int for opponent stack size (big blinds)
                     - 1 int for opponent current round bet size
-
                     
             - bet -> 1 int (the amount we NEED to bet to stay in, could be 0 for just calling)
 
         - action space:
             - fold, call, check, bet 25%, bet 33%, bet 50%, bet 75%, bet 100%, 150%, 200%, 300%, all in
+
+        - checklist: state space, action space, reward function, 
+
+        - learning strat:
+            - how are we going to get our agent to learn?
+                - besides rl obv
+            - 1 idea: self play against n other same agents (5 lets say)  
+                - each one of them plays each other and each one of them learns
+                - fear this this will just take way too long to get a meaningful well played poker agent
+                    - will end up taking billions of games at least
+
+            - "cheat" and have the agent play against other well known "poker bots"
+                - intuition: starts off against semi-good opponent, this it will learn off of the start will be meaningful
+                - once we consistently start performing well against these bots and 
+                    consistently beating them, then we transition to self play against another one of our own bots
+                
+            - play against "heuristic pot odds bot"
+                - simple and fast
+                - dont have to compute decision of other agents
+                - scale this to a few billion games, and then start self play
+            
+            - only con to self play besides scale issues:
+                - self play might result in the agent learnign to play against a specific type of player
+                - in poker, there are many different types of players and we need our agent to be well equipped for all types
+                - essentially, when we "learn" how to beat the opponent in self-play then we are just training for that type of player
+                    and the consequence is that we lose to all other types of players
+                - 
+
+        - revised learnign strat:
+            - use "well known poker bots" for benchmarks/testing of how good our agent is
+                - run like 50 episodes every 1 mil episodes against these bots
+            
+            - **start off with "heuristic" or other lower skilled bots, run this for a few million episodes so that our agent
+                gets a good baseline**
+                - converged onto this idea, will begin with it and will still think about how to scale self-play
+                    - scaling the self play and doing it correctly is the most important question, will implement everything else and then fall back to this question
+            
+            - explore nash equilibrium
+            - maybe combine scaled-self play with "varied stregists" (play against different types of bots)
+
+
+    - environment notes:
+        - now have to start implementing the environment
+        - going to have n players in the env
+            - user simply passes in N
+        - going to define an abstract Player class
+            - going to have an action function 
+                - this is where we can differentiate the actions of each bot
+                - heuristic bot, random bot, or our bot
+        - going to have a current idx with the player that turn it is on
+            - the state and step function rely on this idx
+        
+        - apart from above, will implement game logic in most efficient and fast way possible 

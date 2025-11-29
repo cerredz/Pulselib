@@ -3,6 +3,16 @@ import enum
 import numpy as np
 import math
 
+class PlayerStatus(enum.Enum):
+    FOLDED=0
+    ACTIVE=0
+
+class Round(enum.Enum):
+    PREFLOP=0
+    FLOP=1
+    TURN=2
+    RIVER=3
+
 class Cards(enum.Enum):
     ACE_OF_CLUBS=1
     TWO_OF_CLUBS=2
@@ -78,7 +88,6 @@ class Deck():
         np.random.shuffle(self.deck)
         return self.deck # shape: (52, 1)
 
-
 def poker_reward(
         w1: float,
         w2: float,
@@ -92,6 +101,7 @@ def poker_reward(
         fair_share: float, 
         action_type: int
     ):
+
     m=.5*((equity*pot)-investment)+.5*(stack)
     o=cost_to_call / (pot + cost_to_call)
     if action_type==0: # calling
@@ -99,9 +109,6 @@ def poker_reward(
     elif action_type==1: # folding
         s=(o-equity)*pot
     else: # raising/betting
-        s=equity - fair_share * pot * 1.2
-    r=n * math.tanh((w1*m+w2*s)/K)
+        s=equity-fair_share*pot*1.2
+    r=n*math.tanh((w1*m+w2*s)/K)
     return r
-
-
-
