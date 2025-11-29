@@ -249,3 +249,9 @@ Implementing a poker enviornment first ideas:
             - the state and step function rely on this idx
         
         - apart from above, will implement game logic in most efficient and fast way possible 
+
+
+    - more notes:
+        - explore more complex reward function with more poker data points
+        - explore "biased" reward functions for different agent for our main agent to play against
+            - "biased" folding agent,"biased" raising agent, etc
