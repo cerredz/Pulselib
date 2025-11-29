@@ -1,0 +1,17 @@
+# initialize globals
+RESULTS_DIR: "Poker"
+ENV_ID: "Pulse-Poker-v1"
+PLOT_FILENAME: ""
+SCORES_FILENAME: ""
+AGENTS: ["qlearning", 'heuristic', 'heuristic', 'heuristic', 'heuristic']
+
+# gym config
+NUM_ENVS:4
+EPISODES: 10000
+
+# poker specific config
+SMALL_BLIND: 
+BIG_BLIND:
+STARTING_STACK: 
+NUM_PLAYERS: 6
+

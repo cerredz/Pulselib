@@ -2,18 +2,14 @@ import gymnasium as gym
 import numpy as np
 import eval7
 from gymnasium import spaces
-import math
-import random
-
 from environments.Poker.Player import Player
 from environments.Poker.utils import encode_card, poker_reward
-
 
 class Poker(gym.Env):
     metadata = {'render.modes': ['human']}
     NUM_ACTIONS = 13
     
-    def __init__(self, n=6, bb=2, starting_stack=100):
+    def __init__(self, agents=None, n=6, bb=2, starting_stack=100):
         super().__init__()
         
         self.n = n
@@ -31,7 +27,7 @@ class Poker(gym.Env):
         self.observation_space = spaces.Box(low=0, high=10000, shape=(obs_size,), dtype=np.float32)
 
         self.deck = eval7.Deck()
-        self.players = [] 
+        self.players = agents if agents else []
         self.button_pos = 0
 
     def reset(self, seed=None, options=None):
@@ -178,7 +174,7 @@ class Poker(gym.Env):
         actual_bet = min(total_needed, player.stack)
         
         self._bet_chips(player, actual_bet)
-        
+    
         if actual_bet > call_cost:
             self.highest_bet = player.current_round_bet
             self.aggressor_idx = player.id
@@ -267,6 +263,7 @@ class Poker(gym.Env):
             self.board, 
             50
         )
+
         return equity
 
     def resolve_showdown(self):
