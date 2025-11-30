@@ -14,7 +14,7 @@ import time  # <--- 1. Added import
 CONFIG_FILENAME="on_policy_first_visit_monte_carlo.yaml"
 ENV_ID="Pulse-2048-v2"
 RESULTS_DIR=Path(__file__).parent.parent.parent/"results"/"2048" 
-PLOT_FILENAME="fv_monte_carlo_learning_curve" 
+PLOT_FILENAME="fv_monte_carlo_learning_curve"
 SCORES_FILENAME="fv_monte_carlo_scores"
 
 if __name__ == "__main__":

@@ -25,22 +25,16 @@ def select_action_epsilon_greedy_numba(actions, epsilon):
 @njit('void(float64[:], int32, float64[:], float64, float64, float64, boolean)')
 def update_q_entry(current_q_vals, action, next_q_vals, alpha, reward, gamma, is_terminal):
     
-    # 1. Calculate Max Q(S', a)
-    # We initialize with the first element, not -inf, to be safe and fast
     max_next_q = next_q_vals[0]
     for i in range(1, len(next_q_vals)):
         if next_q_vals[i] > max_next_q:
             max_next_q = next_q_vals[i]
             
-    # 2. Calculate Target
-    # If terminal, future value is 0
     if is_terminal:
         target = reward
     else:
         target = reward + gamma * max_next_q
         
-    # 3. Update Q(S, A)
-    # Q(S, A) <- Q(S, A) + alpha * [Target - Q(S, A)]
     old_val = current_q_vals[action]
     current_q_vals[action] = old_val + alpha * (target - old_val)
 
