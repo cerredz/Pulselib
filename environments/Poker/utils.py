@@ -1,7 +1,6 @@
 # utility functions for our poker environment
 import math
 from typing import List
-from environments.Poker.Player import HeuristicPlayer, Player, QLearningPlayer, RandomPlayer
 import enum
 import eval7
 
@@ -19,14 +18,9 @@ def decode_card(rank_int, suit_int):
     return eval7.Card(card_str)
 
 def encode_card(card):
-    """
-    Converts eval7 Card object to a fixed vector.
-    We use Rank (0-12) and Suit (0-3). 
-    Returns: [Rank, Suit] (2 ints) for Q-Learning or [OneHot] for NN.
-    For this example, we return simple Ints to keep state small.
-    """
-    if card is None: return [0, 0]
-    return [card.rank, card.suit]
+    # converts card to int between 0 and 51
+    print(card.rank, card.suit)
+    return card.rank + 13 * card.suit
 
 def poker_reward(
         w1: float,
@@ -59,10 +53,13 @@ class PokerAgentType(enum.Enum):
     RANDOM='random'
 
 def load_agents(num_players: int, agent_types: list, starting_stack: int) -> list:
+    # Local imports to avoid circular import with Player -> utils
+    from agents.TemperalDifference.PokerQLearning import PokerQLearning
+    from environments.Poker.Player import HeuristicPlayer, RandomPlayer
     players = []
     assert len(agent_types) == num_players
     for i, a_type in enumerate(agent_types):
-        if a_type == 'qlearning': p = QLearningPlayer(starting_stack, i)
+        if a_type == 'qlearning': p = PokerQLearning(starting_stack, i)
         elif a_type == 'random': p = RandomPlayer(starting_stack, i)
         else: p = HeuristicPlayer(starting_stack, i)
         players.append(p)

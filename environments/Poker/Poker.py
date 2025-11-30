@@ -213,33 +213,33 @@ class Poker(gym.Env):
         """Flattened state vector for Neural Net."""
         obs = []
         
-        # Board (10 ints) - handle up to 5 cards
+        # Board (5 ints) - handle up to 5 cards
         for i in range(5):
             if i < len(self.board): obs.extend(encode_card(self.board[i]))
-            else: obs.extend([0, 0])
+            else: obs.extend(0)
         
-        # Hero Cards (4 ints)
+        # Hero Cards (2 ints)
         hero = self.players[self.curr_idx]
         obs.extend(encode_card(hero.hand[0]))
         obs.extend(encode_card(hero.hand[1]))
         
-        # Globals (5 floats)
+        # Globals (5 ints)
         obs.append(self.stage)
         obs.append((self.curr_idx - self.button_pos) % self.n)
-        obs.append(self.pot / self.bb)
+        obs.append(int(self.pot / self.bb))
         call_cost = self.highest_bet - hero.current_round_bet
         obs.append(call_cost / self.bb)
         obs.append(hero.stack / self.bb)
         
-        # Opponents (N * 3 floats)
+        # Opponents (N * 3 ints)
         for i in range(1, self.n):
             opp_idx = (self.curr_idx + i) % self.n
             opp = self.players[opp_idx]
-            obs.append(opp.stack / self.bb)
-            obs.append(1.0 if opp.status == 'active' else 0.0)
+            obs.append(int(opp.stack / self.bb))
+            obs.append(1 if opp.status == 'active' else 0)
             obs.append(opp.current_round_bet / self.bb)
             
-        return np.array(obs, dtype=np.float32)
+        return tuple(obs)
 
     def _calculate_equity(self, player):
         """Estimates equity using Monte Carlo simulation."""

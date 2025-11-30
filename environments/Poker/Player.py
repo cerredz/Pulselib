@@ -68,5 +68,3 @@ class HeuristicPlayer(Player):
 
     def learn(self, episode): pass
 
-class QLearningPlayer(Player):
-    pass

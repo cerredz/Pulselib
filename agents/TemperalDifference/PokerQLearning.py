@@ -1,12 +1,12 @@
 import struct
 import random
-import math
+from environments.Poker.Player import Player
 
 POKER_STATE_FORMAT = '5B2BBBH3H5B5H5H'
 PACKER = struct.Struct(POKER_STATE_FORMAT)
 
-class PokerQLearning:
-    def __init__(self, ep, gamma, alpha, action_space_n):
+class PokerQLearning(Player):
+    def __init__(self, action_space_n, ep=.1, gamma=.9, alpha=.9):
         self.ep = ep
         self.gamma = gamma
         self.alpha = alpha 
@@ -37,7 +37,7 @@ class PokerQLearning:
                 a_val = q_vals[i]
         return a
 
-    def update(self, state, action, reward, next_state, done):
+    def learn(self, state, action, reward, next_state, done):
         # "learning" function, called after we call the action function and get the next state and reward
         # get q_vals
         key = self.state_key(state)

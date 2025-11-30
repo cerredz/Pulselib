@@ -3,15 +3,25 @@ RESULTS_DIR: "Poker"
 ENV_ID: "Pulse-Poker-v1"
 PLOT_FILENAME: ""
 SCORES_FILENAME: ""
-AGENTS: ["qlearning", 'heuristic', 'heuristic', 'heuristic', 'heuristic']
+AGENTS:
+  - "qlearning"
+  - "heuristic"
+  - "heuristic"
+  - "heuristic"
+  - "random"
+  - "random"
 
-# gym config
-NUM_ENVS:4
+NUM_ENVS: 4
 EPISODES: 10000
 
 # poker specific config
-SMALL_BLIND: 
-BIG_BLIND:
-STARTING_STACK: 
+SMALL_BLIND: 25
+BIG_BLIND: 50
+STARTING_STACK: 100
 NUM_PLAYERS: 6
 
+# reward function config
+W1: 2
+W2: .5
+W1_DECAY: .99999
+W2_DECAY: .9999
