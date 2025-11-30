@@ -184,7 +184,7 @@ Implementing a poker enviornment first ideas:
             - our cards -> 2 ints
             - stage in game (preflop, flop, turn, river) -> 1 int, 0-3
             - position -> 1 int (from button)
-            - pot size -> 1 float (normalized with blind size)
+            - pot size -> 1 int (normalized with blind size)
             - our money -> 1 int (normalized with blind size)
             - opponent info: 
                 -> n player ints * 3

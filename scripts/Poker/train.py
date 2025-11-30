@@ -18,7 +18,6 @@ if __name__ == "__main__":
 
     env=gym.make(config["ENV_ID"], agents=agents, n=config["PlAYERS"], bb=config["BIG_BLINDS"], starting_stack=config["STARTING_STACK"])
 
-
     for i in range(config["NUM_EPISODES"]):
         state, info = env.reset() 
         terminated, truncated = False, False
