@@ -20,3 +20,7 @@ Below are a set of important questions to think about when solving any reinforce
 
 - memory:
     - how long should information about the updates be retained for 
+
+
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
+.\.venv\Scripts\Activate.ps1

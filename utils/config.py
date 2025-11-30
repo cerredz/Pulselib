@@ -25,3 +25,9 @@ def get_paths(config: dict) -> Tuple[Path, Path, Path]:
     steps_path = results_dir / config["STEPS_RESULT_FILENAME"]
     
     return reward_path, score_path, steps_path
+
+def get_result_folder(result_dir: str) -> Path:
+    res=Path(__file__).parent.parent/"results"/result_dir
+    if not Path.exists(res):
+        res=res.mkdir(parents=True, exist_ok=True)
+    return res
