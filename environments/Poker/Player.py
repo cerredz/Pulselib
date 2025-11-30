@@ -40,13 +40,15 @@ class RandomPlayer(Player):
 class HeuristicPlayer(Player):
     def action(self, state, valid_actions=None):
         # 1. Parse Pot Odds (Price)
-        pot, call_cost = state[16], state[17]
+        pot, call_cost = state[9], state[10]
         pot_odds = call_cost / (pot + call_cost) if (pot + call_cost) > 0 else 0
 
         # 2. Parse Cards
-        hand = [decode_card(state[10], state[11]), decode_card(state[12], state[13])]
-        board = [decode_card(state[i], state[i+1]) for i in range(0, 10, 2) if state[i] != 0]
-        hand = [c for c in hand if c] # Filter None
+        hand = [decode_card(state[5]), decode_card(state[6])]
+        board = [decode_card(state[i]) for i in range(5) if state[i] != -1]
+                
+        hand = [c for c in hand if c]
+        board = [c for c in board if c]
 
         if not hand: return 0
 

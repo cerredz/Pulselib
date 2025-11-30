@@ -2,11 +2,17 @@ import struct
 import random
 from environments.Poker.Player import Player
 
-POKER_STATE_FORMAT = '5B2BBBH3H5B5H5H'
+# --- Format String Explanation ---
+# Total Items: 27
+# 9B: Board(5) + Hand(2) + Stage(1) + Pos(1)  [Indices 0-8]
+# 3H: Pot(1) + CallCost(1) + Stack(1)         [Indices 9-11]
+# (H B H) * 5: For each opponent -> Stack(H), Status(B), Bet(H) [Indices 12-26]
+POKER_STATE_FORMAT = '9B3H' + 'HBH'*5
 PACKER = struct.Struct(POKER_STATE_FORMAT)
 
 class PokerQLearning(Player):
-    def __init__(self, action_space_n, ep=.1, gamma=.9, alpha=.9):
+    def __init__(self, id, starting_stack, action_space_n, ep=.1, gamma=.9, alpha=.9):
+        super().__init__(starting_stack, id)
         self.ep = ep
         self.gamma = gamma
         self.alpha = alpha 
@@ -23,6 +29,7 @@ class PokerQLearning(Player):
         return self.q.get(key, self.default_q)
 
     def action(self, state):
+        print("state:", state)
         # e-greedy policy
         if random.random() < self.ep:
             return random.randrange(self.action_space_n)

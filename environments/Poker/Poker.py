@@ -4,6 +4,7 @@ import eval7
 from gymnasium import spaces
 from environments.Poker.Player import Player
 from environments.Poker.utils import encode_card, poker_reward
+from utils.steps import steps
 
 class Poker(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -22,8 +23,7 @@ class Poker(gym.Env):
         self.raise_fractions = [0.25, 0.33, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00, 4.00]
         
         # Observation Space
-        # Board(10) + Hand(4) + GameVars(5) + Opponents(N*3)
-        obs_size = 19 + (self.n * 3)
+        obs_size = 12 + ((self.n-1) * 3)
         self.observation_space = spaces.Box(low=0, high=10000, shape=(obs_size,), dtype=np.float32)
 
         self.deck = eval7.Deck()
@@ -32,8 +32,9 @@ class Poker(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
+        self.deck=eval7.Deck()
         self.deck.shuffle()
-        self.board = [] # Board is empty list of eval7 cards, NOT [0]*5
+        self.board = []
         self.pot = 0
         self.stage = 0 
         
@@ -44,7 +45,7 @@ class Poker(gym.Env):
             regenerate_players = options.get('regenerate_players', False)
             reset_stacks = options.get('reset_stacks', True)
 
-        # Player Initialization / Reuse
+        # Player Initialization / Reuse if we have none
         if not self.players or regenerate_players:
             self.players = []
             for i in range(self.n):
@@ -76,10 +77,9 @@ class Poker(gym.Env):
         
         return self._get_obs(), {}
 
+    @steps(reported_every_sec=5.0)
     def step(self, action):
-        """
-        Executes action, moves game forward, calculates reward.
-        """
+        # executes action, calcs reward, game moves forward
         current_player = self.players[self.curr_idx]
         prev_stack = current_player.stack
         prev_invested = current_player.current_round_bet
@@ -102,7 +102,7 @@ class Poker(gym.Env):
             if self.players[next_player_idx].status == 'active':
                 break
         
-        self.curr_idx = next_player_idx
+            self.curr_idx = next_player_idx
         
         # 3. Handle Street Transitions & Game End
         terminated = False
@@ -132,7 +132,7 @@ class Poker(gym.Env):
             equity=new_equity,
             pot=self.pot,
             investment=investment_this_step,
-            stack_change=stack_change,
+            stack=stack_change,
             cost_to_call=call_cost,
             fair_share=1.0/max(1, self.count_active_players()),
             action_type=action
@@ -215,21 +215,21 @@ class Poker(gym.Env):
         
         # Board (5 ints) - handle up to 5 cards
         for i in range(5):
-            if i < len(self.board): obs.extend(encode_card(self.board[i]))
-            else: obs.extend(0)
+            if i < len(self.board): obs.append(encode_card(self.board[i]))
+            else: obs.append(0)
         
         # Hero Cards (2 ints)
         hero = self.players[self.curr_idx]
-        obs.extend(encode_card(hero.hand[0]))
-        obs.extend(encode_card(hero.hand[1]))
+        obs.append(encode_card(hero.hand[0]))
+        obs.append(encode_card(hero.hand[1]))
         
         # Globals (5 ints)
         obs.append(self.stage)
         obs.append((self.curr_idx - self.button_pos) % self.n)
         obs.append(int(self.pot / self.bb))
         call_cost = self.highest_bet - hero.current_round_bet
-        obs.append(call_cost / self.bb)
-        obs.append(hero.stack / self.bb)
+        obs.append(int(call_cost / self.bb))
+        obs.append(int(hero.stack / self.bb))
         
         # Opponents (N * 3 ints)
         for i in range(1, self.n):
@@ -237,7 +237,7 @@ class Poker(gym.Env):
             opp = self.players[opp_idx]
             obs.append(int(opp.stack / self.bb))
             obs.append(1 if opp.status == 'active' else 0)
-            obs.append(opp.current_round_bet / self.bb)
+            obs.append(int(opp.current_round_bet / self.bb))
             
         return tuple(obs)
 

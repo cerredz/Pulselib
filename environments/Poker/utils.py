@@ -4,23 +4,31 @@ from typing import List
 import enum
 import eval7
 
-def decode_card(rank_int, suit_int):
+def decode_card(card_int):
     """
-    Reconstructs an eval7 Card object from the state vector integers.
+    Reconstructs an eval7 Card object from the single state integer (0-51).
+    Returns None if card_int is -1 or out of bounds.
     """
+    if card_int == -1 or card_int == 52: # Handle padding
+        return None
+        
+    # Validation
+    if card_int < 0 or card_int > 51:
+        return None
+
     ranks = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
     suits = ['c', 'd', 'h', 's']
     
-    if rank_int < 0 or rank_int > 12 or suit_int < 0 or suit_int > 3:
-        return None
-        
-    card_str = f"{ranks[int(rank_int)]}{suits[int(suit_int)]}"
+    # Reverse the formula: rank + (13 * suit)
+    rank_idx = card_int % 13
+    suit_idx = card_int // 13
+    
+    card_str = f"{ranks[rank_idx]}{suits[suit_idx]}"
     return eval7.Card(card_str)
 
 def encode_card(card):
     # converts card to int between 0 and 51
-    print(card.rank, card.suit)
-    return card.rank + 13 * card.suit
+    return card.rank + (13 * card.suit)
 
 def poker_reward(
         w1: float,
@@ -52,14 +60,14 @@ class PokerAgentType(enum.Enum):
     HEURISTIC="heuistic"
     RANDOM='random'
 
-def load_agents(num_players: int, agent_types: list, starting_stack: int) -> list:
+def load_agents(num_players: int, agent_types: list, starting_stack: int, action_space_n: int) -> list:
     # Local imports to avoid circular import with Player -> utils
     from agents.TemperalDifference.PokerQLearning import PokerQLearning
     from environments.Poker.Player import HeuristicPlayer, RandomPlayer
     players = []
     assert len(agent_types) == num_players
     for i, a_type in enumerate(agent_types):
-        if a_type == 'qlearning': p = PokerQLearning(starting_stack, i)
+        if a_type == 'qlearning': p = PokerQLearning(i, starting_stack, action_space_n)
         elif a_type == 'random': p = RandomPlayer(starting_stack, i)
         else: p = HeuristicPlayer(starting_stack, i)
         players.append(p)
