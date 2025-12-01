@@ -51,18 +51,15 @@ class HeuristicPlayer(Player):
         board = [c for c in board if c]
 
         if not hand: return 0
-
-        # 3. Calculate Strength (Proxy for Equity)
         strength = 0.5
-        if not board: # Pre-flop Heuristics
+        if not board: 
             r1, r2 = hand[0].rank, hand[1].rank
-            if r1 == r2: strength = 0.8       # Pair
-            elif r1 > 9 and r2 > 9: strength = 0.6 # High Cards
-        else: # Post-flop: Normalized Hand Rank
+            if r1 == r2: strength = 0.8
+            elif r1 > 9 and r2 > 9: strength = 0.6 
+        else: 
             score = eval7.evaluate(hand + board)
             strength = min(1.0, math.log(score + 1) / 18.5)
 
-        # 4. Decision: Value > Price
         if strength > pot_odds + 0.1: 
             if strength > 0.8: return 8 
             return 1 

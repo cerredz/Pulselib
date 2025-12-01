@@ -36,7 +36,7 @@ class Poker(gym.Env):
         self.deck.shuffle()
         self.board = []
         self.pot = 0
-        self.stage = 0 
+        self.stage = 0
         
         regenerate_players = False
         reset_stacks = True
@@ -46,29 +46,22 @@ class Poker(gym.Env):
             reset_stacks = options.get('reset_stacks', True)
 
         # Player Initialization / Reuse if we have none
-        if not self.players or regenerate_players:
-            self.players = []
-            for i in range(self.n):
-                hand = self.deck.deal(2)
-                p = Player(stack_size=self.starting_stack, player_id=i)
-                p.hand = hand
-                self.players.append(p)
-        else:
-            for i, p in enumerate(self.players):
-                hand = self.deck.deal(2)
-                stack_val = self.starting_stack if reset_stacks else None
-                p.reset_state(new_hand=hand, starting_stack=stack_val)
+        
+        for i, p in enumerate(self.players):
+            hand = self.deck.deal(2)
+            stack_val = self.starting_stack if p.stack==0 else None
+            p.reset_state(new_hand=hand, starting_stack=stack_val)
             
         # Blinds & Position Logic
         self.button_pos = (self.button_pos + 1) % self.n
         self.sb_pos = (self.button_pos + 1) % self.n
         self.bb_pos = (self.button_pos + 2) % self.n
         
-        self._post_blind(self.sb_pos, self.sb)
-        self._post_blind(self.bb_pos, self.bb)
+        self._post_blind(self.sb_pos, 0) # small blind is .5 blinds, round to 0
+        self._post_blind(self.bb_pos, 1) # big blind is 1 blind
         
         self.curr_idx = (self.bb_pos + 1) % self.n
-        self.highest_bet = self.bb 
+        self.highest_bet = 1 # big blind bet 
         self.aggressor_idx = self.bb_pos
         self.players_acted_this_street = 0
         
@@ -99,11 +92,10 @@ class Poker(gym.Env):
                 is_round_over = True
                 break
                 
-            if self.players[next_player_idx].status == 'active':
+            if self.players[next_player_idx].status == 'active' or self.players[next_player_idx].status == 'allin':
                 break
         
-            self.curr_idx = next_player_idx
-        
+        self.curr_idx = next_player_idx
         # 3. Handle Street Transitions & Game End
         terminated = False
         stack_change = 0
@@ -168,7 +160,7 @@ class Poker(gym.Env):
             if 0 <= idx < len(self.raise_fractions):
                 raise_amount = int(current_pot_total * self.raise_fractions[idx])
             else:
-                raise_amount = self.bb
+                raise_amount = 1
 
         total_needed = call_cost + int(raise_amount)
         actual_bet = min(total_needed, player.stack)
@@ -226,10 +218,10 @@ class Poker(gym.Env):
         # Globals (5 ints)
         obs.append(self.stage)
         obs.append((self.curr_idx - self.button_pos) % self.n)
-        obs.append(int(self.pot / self.bb))
+        obs.append(int(self.pot))
         call_cost = self.highest_bet - hero.current_round_bet
-        obs.append(int(call_cost / self.bb))
-        obs.append(int(hero.stack / self.bb))
+        obs.append(int(call_cost))
+        obs.append(int(hero.stack))
         
         # Opponents (N * 3 ints)
         for i in range(1, self.n):
@@ -242,29 +234,19 @@ class Poker(gym.Env):
         return tuple(obs)
 
     def _calculate_equity(self, player):
-        """Estimates equity using Monte Carlo simulation."""
         if player.status == 'folded': return 0.0
-        
-        # Pre-flop heuristic
-        if len(self.board) == 0:
-            rank1 = player.hand[0].rank
-            rank2 = player.hand[1].rank
-            if rank1 == rank2: return 0.7 
-            if rank1 > 10 and rank2 > 10: return 0.6
-            return 0.4
-            
-        # Post-flop Monte Carlo
-        opp_ranges = [eval7.HandRange("random") for _ in range(self.count_active_players() - 1)]
-        if not opp_ranges: return 1.0
-        
-        equity = eval7.py_hand_vs_range_monte_carlo(
-            player.hand, 
-            opp_ranges[0], 
-            self.board, 
-            50
-        )
+        if self.count_active_players() == 1: return 1.0
 
-        return equity
+        return .5
+        
+        # Use Monte Carlo for all streets with adaptive sims
+        sims = {0: 10, 1: 20, 2: 30, 3: 40}.get(self.stage, 50)
+        return eval7.py_hand_vs_range_monte_carlo(
+            player.hand,
+            eval7.HandRange("AA,KK,QQ,JJ,TT,99,88,77,66,55,44,33,22,AKs,AKo,AQs,AQo,AJs,AJo,ATs,ATo,A9s,A9o,A8s,A8o,A7s,A7o,A6s,A6o,A5s,A5o,A4s,A4o,A3s,A3o,A2s,A2o,KQs,KQo,KJs,KJo,KTs,KTo,K9s,K9o,K8s,K8o,K7s,K7o,K6s,K6o,K5s,K5o,K4s,K4o,K3s,K3o,K2s,K2o,QJs,QJo,QTs,QTo,Q9s,Q9o,Q8s,Q8o,Q7s,Q7o,Q6s,Q6o,Q5s,Q5o,Q4s,Q4o,Q3s,Q3o,Q2s,Q2o,JTs,JTo,J9s,J9o,J8s,J8o,J7s,J7o,J6s,J6o,J5s,J5o,J4s,J4o,J3s,J3o,J2s,J2o,T9s,T9o,T8s,T8o,T7s,T7o,T6s,T6o,T5s,T5o,T4s,T4o,T3s,T3o,T2s,T2o,98s,98o,97s,97o,96s,96o,95s,95o,94s,94o,93s,93o,92s,92o,87s,87o,86s,86o,85s,85o,84s,84o,83s,83o,82s,82o,76s,76o,75s,75o,74s,74o,73s,73o,72s,72o,65s,65o,64s,64o,63s,63o,62s,62o,54s,54o,53s,53o,52s,52o,43s,43o,42s,42o,32s,32o"),
+            self.board,
+            sims
+        )
 
     def resolve_showdown(self):
         active_players = [p for p in self.players if p.status != 'folded']

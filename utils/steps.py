@@ -1,7 +1,7 @@
 import time
 from typing import Callable
 # decorator to count the number of steps per second of the reinforcement learning algorithm (used for benchmarking)
-
+from rich import print as r
 import time
 from typing import Callable
 from functools import wraps
@@ -10,6 +10,7 @@ _step_counter = 0
 _start_time = time.time()
 _last_report_time = _start_time
 _lock = None 
+
 def steps(reported_every_sec: float = 10.0):
     def decorator(func: Callable) -> Callable:
         @wraps(func)
@@ -28,5 +29,19 @@ def steps(reported_every_sec: float = 10.0):
         return wrapper
     return decorator
 
-def profile(func: Callable) -> dict:
-    pass
+def profile(f):
+    @wraps(f)
+    def wrapper(*a, **kw):
+        s = time.perf_counter()
+        try:
+            res = f(*a, **kw)
+        except Exception as e:
+            r(f"[red]Failed[/] [bold]{f.__name__}[/] raised {type(e).__name__} after "
+              f"[bold]{(time.perf_counter()-s)*1000:,.1f}ms[/]")
+            raise
+        ms = (time.perf_counter() - s) * 1000
+        color = "green" if ms < 10 else "yellow" if ms < 100 else "red"
+        r(f"[cyan]Profile[/] [white]{f.__name__}[/] {a or ''}{kw or ''} → {res!r}  "
+          f"[{color}]{ms:8.2f} ms[/]")
+        return res
+    return wrapper

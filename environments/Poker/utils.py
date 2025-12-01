@@ -73,3 +73,19 @@ def load_agents(num_players: int, agent_types: list, starting_stack: int, action
         players.append(p)
     return players
 
+def debug_state(st, pid, aid):
+    """Debug poker state - prints state, player ID, and action."""
+    actions = ["Fold", "Check/Call", "MinRaise", "R25%", "R33%", "R50%", "R75%", "R100%", "R150%", "R200%", "R300%", "R400%", "All-in"]
+    stages = ["Preflop", "Flop", "Turn", "River", "Game Over"]
+    
+    board = ' '.join(str(decode_card(c)) for c in st[0:5] if c != 0) or "(empty)"
+    hand = f"{decode_card(st[5])} {decode_card(st[6])}"
+    n_opp = (len(st) - 12) // 3
+    opps = ', '.join(f"O{i+1}:{st[12+i*3]}BB/{'A' if st[13+i*3] else 'F'}/{st[14+i*3]}BB" 
+                     for i in range(n_opp))
+    
+    print(f"Player: {pid} Action: {actions[aid]} | {stages[st[7]]} | Hand:{hand} Stack:{st[11]}BB Pos:{st[8]}\n"
+          f"Board:{board} Pot:{st[9]}BB Call:{st[10]}BB | {opps}")
+
+
+

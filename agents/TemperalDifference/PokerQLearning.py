@@ -29,7 +29,6 @@ class PokerQLearning(Player):
         return self.q.get(key, self.default_q)
 
     def action(self, state):
-        print("state:", state)
         # e-greedy policy
         if random.random() < self.ep:
             return random.randrange(self.action_space_n)
