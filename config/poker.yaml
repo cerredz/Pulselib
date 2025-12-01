@@ -12,7 +12,7 @@ AGENTS:
   - "random"
 
 NUM_ENVS: 4
-EPISODES: 10
+EPISODES: 5000
 
 # poker specific config
 SMALL_BLIND: 25

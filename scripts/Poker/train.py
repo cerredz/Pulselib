@@ -30,7 +30,7 @@ def train_agent(env, agents, episodes):
             #break
         #break
     
-        if i % 5 == 0:
+        if i % 50 == 0:
             print(f"Episode {i}: Current stack: {agents[0].stack}")
 
 if __name__ == "__main__":

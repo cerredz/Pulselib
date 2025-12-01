@@ -3,8 +3,11 @@ import numpy as np
 import eval7
 from gymnasium import spaces
 from environments.Poker.Player import Player
-from environments.Poker.utils import encode_card, poker_reward
+from environments.Poker.utils import calculate_equity, encode_card, poker_reward
 from utils.steps import steps
+
+_FULL_RANGE = eval7.HandRange("AA,KK,QQ,JJ,TT,99,88,77,66,55,44,33,22,AKs,AKo,AQs,AQo,AJs,AJo,ATs,ATo,A9s,A9o,A8s,A8o,A7s,A7o,A6s,A6o,A5s,A5o,A4s,A4o,A3s,A3o,A2s,A2o,KQs,KQo,KJs,KJo,KTs,KTo,K9s,K9o,K8s,K8o,K7s,K7o,K6s,K6o,K5s,K5o,K4s,K4o,K3s,K3o,K2s,K2o,QJs,QJo,QTs,QTo,Q9s,Q9o,Q8s,Q8o,Q7s,Q7o,Q6s,Q6o,Q5s,Q5o,Q4s,Q4o,Q3s,Q3o,Q2s,Q2o,JTs,JTo,J9s,J9o,J8s,J8o,J7s,J7o,J6s,J6o,J5s,J5o,J4s,J4o,J3s,J3o,J2s,J2o,T9s,T9o,T8s,T8o,T7s,T7o,T6s,T6o,T5s,T5o,T4s,T4o,T3s,T3o,T2s,T2o,98s,98o,97s,97o,96s,96o,95s,95o,94s,94o,93s,93o,92s,92o,87s,87o,86s,86o,85s,85o,84s,84o,83s,83o,82s,82o,76s,76o,75s,75o,74s,74o,73s,73o,72s,72o,65s,65o,64s,64o,63s,63o,62s,62o,54s,54o,53s,53o,52s,52o,43s,43o,42s,42o,32s,32o")
+
 
 class Poker(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -37,16 +40,7 @@ class Poker(gym.Env):
         self.board = []
         self.pot = 0
         self.stage = 0
-        
-        regenerate_players = False
-        reset_stacks = True
-        
-        if options:
-            regenerate_players = options.get('regenerate_players', False)
-            reset_stacks = options.get('reset_stacks', True)
-
-        # Player Initialization / Reuse if we have none
-        
+                
         for i, p in enumerate(self.players):
             hand = self.deck.deal(2)
             stack_val = self.starting_stack if p.stack==0 else None
@@ -233,19 +227,19 @@ class Poker(gym.Env):
             
         return tuple(obs)
 
-    def _calculate_equity(self, player):
-        if player.status == 'folded': return 0.0
-        if self.count_active_players() == 1: return 1.0
+    def _calculate_equity_preflop(self, player):
+        # calculates the equity of a players hand preflop
+        # extrapolated into another function because the preflop equity can be caluclated with a lookup table
+        pass
 
-        return .5
-        
-        # Use Monte Carlo for all streets with adaptive sims
-        sims = {0: 10, 1: 20, 2: 30, 3: 40}.get(self.stage, 50)
-        return eval7.py_hand_vs_range_monte_carlo(
+    def _calculate_equity(self, player):
+        """Optimized equity calculation using imported function."""
+        return calculate_equity(
             player.hand,
-            eval7.HandRange("AA,KK,QQ,JJ,TT,99,88,77,66,55,44,33,22,AKs,AKo,AQs,AQo,AJs,AJo,ATs,ATo,A9s,A9o,A8s,A8o,A7s,A7o,A6s,A6o,A5s,A5o,A4s,A4o,A3s,A3o,A2s,A2o,KQs,KQo,KJs,KJo,KTs,KTo,K9s,K9o,K8s,K8o,K7s,K7o,K6s,K6o,K5s,K5o,K4s,K4o,K3s,K3o,K2s,K2o,QJs,QJo,QTs,QTo,Q9s,Q9o,Q8s,Q8o,Q7s,Q7o,Q6s,Q6o,Q5s,Q5o,Q4s,Q4o,Q3s,Q3o,Q2s,Q2o,JTs,JTo,J9s,J9o,J8s,J8o,J7s,J7o,J6s,J6o,J5s,J5o,J4s,J4o,J3s,J3o,J2s,J2o,T9s,T9o,T8s,T8o,T7s,T7o,T6s,T6o,T5s,T5o,T4s,T4o,T3s,T3o,T2s,T2o,98s,98o,97s,97o,96s,96o,95s,95o,94s,94o,93s,93o,92s,92o,87s,87o,86s,86o,85s,85o,84s,84o,83s,83o,82s,82o,76s,76o,75s,75o,74s,74o,73s,73o,72s,72o,65s,65o,64s,64o,63s,63o,62s,62o,54s,54o,53s,53o,52s,52o,43s,43o,42s,42o,32s,32o"),
             self.board,
-            sims
+            self.stage,
+            self.count_active_players(),
+            player.status
         )
 
     def resolve_showdown(self):
