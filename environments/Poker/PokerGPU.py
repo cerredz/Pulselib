@@ -1,4 +1,5 @@
 from multiprocessing import Value
+from operator import truediv
 from re import L
 from environments.Poker.utils import Agent, validate_agents
 import torch
@@ -121,9 +122,16 @@ class PokerGPU(gym.Env):
         self.deck_positions += n_cards
         return cards
 
-    def deal_cards(self):
+    def deal_cards(self, g, n_cards):
         # deals cards at a stage past the preflop, no longer dealing to players, but rather to 
         # the board
+        n=len(g)
+        if n==0: return torch.empty(0, n_cards, dtype=torch.uint8, device=self.device)
+
+        card_idx = self.deck_positions[g].unsqueeze(1) + torch.arange(n_cards, device=self.device).unsqueeze(0)        cards=self.decks[g, card_idx]
+        cards = self.decks[g.unsqueeze(1), card_idx]
+        self.deck_positions[g] += n_cards
+        return cards
 
     def execute_actions(self, g, actions):
         # executes the actions from the actions tensor for each of the current players
@@ -237,16 +245,35 @@ class PokerGPU(gym.Env):
         self.idx[no_over_mask]=next_player_idx[no_over_mask]
 
         # 3) handle round transitions & game ends
-        terminated, stack_changes=torch.zeros(self.n_games, dtype=torch.bool, device=self.device), torch.zeros(self.n_games, dtype=torch.uint32, device=self.device)
+        terminated = torch.zeros(self.n_games, dtype=torch.bool, device=self.device)
+        stack_changes = torch.zeros(self.n_games, dtype=torch.uint32, device=self.device)
+        active_counts=((self.status == self.ACTIVE) | (self.status == self.ALLIN)).sum(dim=1)
+        early_term=(active_counts <= 1)&is_round_over
+        terminated[early_term]=True
 
-        # next round logic for games that have ended
-        self.stages[is_round_over]+=1
-        self.highest[is_round_over]=0
-        self.agg[is_round_over]=(self.button+1)%self.n_players
-        self.acted[is_round_over]=0
-        self.current_round_bet[g[is_round_over], :]=0
-        flop_mask, turn_mask, river_mask=(self.stages==1), (self.stages==2), (self.stages==3)
-        # burn and then deal cards
+        transition_mask=is_round_over&~early_term
+        if transition_mask.any():
+            g_over=g[transition_mask]
+            self.stages[transition_mask]+=1
+            self.highest[transition_mask] = 0
+            self.agg[transition_mask] = (self.button[transition_mask] + 1) % self.n_players
+            self.acted[transition_mask] = 0
+            self.current_round_bet[g_over, :]=0
+
+            flop_mask = (self.stages[transition_mask] == 1)
+            turn_mask = (self.stages[transition_mask] == 2)
+            river_mask = (self.stages[transition_mask] == 3)
+
+            post_river=(self.stages[transition_mask]>3)
+            terminated[transition_mask & post_river]=True
+
+            for street_mask, n_cards, start_col in [(flop_mask, 3, 0), (turn_mask, 1, 3), (river_mask, 1, 4)]:
+                if street_mask.any():
+                    street_games=g_over[street_mask]
+                    self.deck_positions[street_games]+= 1 # burn 1 card
+                    cards=self.deal_cards(street_games, n_cards)
+                    self.board[street_games, start_col:start_col+n_cards]=cards
+
 
 
 
