@@ -128,7 +128,7 @@ class PokerGPU(gym.Env):
         n=len(g)
         if n==0: return torch.empty(0, n_cards, dtype=torch.uint8, device=self.device)
 
-        card_idx = self.deck_positions[g].unsqueeze(1) + torch.arange(n_cards, device=self.device).unsqueeze(0)        cards=self.decks[g, card_idx]
+        card_idx = self.deck_positions[g].unsqueeze(1) + torch.arange(n_cards, device=self.device).unsqueeze(0)        
         cards = self.decks[g.unsqueeze(1), card_idx]
         self.deck_positions[g] += n_cards
         return cards
@@ -212,6 +212,42 @@ class PokerGPU(gym.Env):
 
             self.acted[raise_mask] += 1 # increase acted for raisers and callers
 
+    def calculate_showdown_winners(self, g):
+        # need way to calculate winners on the gpu when multiple people are left
+        # here is where we will do it
+
+        # algorithmic approach:
+            # we need to get the games that are past the post flop and have more than 1 active player
+            # board has 5 cards, each player has 2 cards
+            # card value split by suit -> 0-12=clubs, 13-25=diamonds, etc, each category is ascending order from 2->ace
+            # need masks for each type of hand in descending order of hands (depending on card values above)
+                # royal flush mask
+                # straight flush mask
+                # four of a kind mask, etc
+            # using masks, evaluate strength of each hand in the games we need to, handle side pots, and 
+                # award the pots to the winners
+                # hardest parts are SIDE POTS and TIE BREAKERS
+        
+        # find showdown games
+        active_counts=((self.status==self.ACTIVE) | (self.status==self.ALLIN)).sum(dim=1)
+        showdown_mask=(self.stages>3) & (active_counts>1)
+        if not showdown_mask.any(): return # no showdowns in any games
+
+        # find active players in these games
+        g_show=torch.where(showdown_mask)[0]
+        num_show=len(g_show)
+        
+        player_mask = ((self.status[g_show] == self.ACTIVE) | (self.status[g_show] == self.ALLIN))
+        full_hands = torch.cat([self.hands[g_show], self.board[g_show].unsqueeze(1).expand(-1, self.n_players, -1)], dim=2)  # [num_show, n_players, 7]
+        valid_cards=(full_hands>0)
+        full_hands[~valid_cards]=0
+
+        ranks, suits = full_hands%13, full_hands//13
+
+        sorted_ranks, _= torch.sort(ranks, dim=2, device=self.device, descending=True) # [num_show, n_players, 7]
+
+        pass
+
     def step(self, actions):
         # step function to handle logic of n_games actions at once
         # get game indices ready
@@ -274,6 +310,7 @@ class PokerGPU(gym.Env):
                     cards=self.deal_cards(street_games, n_cards)
                     self.board[street_games, start_col:start_col+n_cards]=cards
 
+        # showdown resolution, resolve winner by fold, stack change calculation for rewards
 
 
 
