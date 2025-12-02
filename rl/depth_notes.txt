@@ -266,3 +266,5 @@ Implementing a poker enviornment first ideas:
                         apply fixes
 
                 - each game should realistically only be at most 50-75 steps 
+        - experiement with moving the raise_amounts tensor outside of the actions function and into the 
+            reset function

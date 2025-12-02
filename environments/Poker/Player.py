@@ -15,7 +15,7 @@ class Player(ABC):
         self.current_round_bet = 0   # Amount bet in current street
         self.total_invested = 0      # Amount bet in entire hand
         self.status = 'active'       # 'active', 'folded', 'allin'
-        self.hand = []               # List of eval7 cards
+        self.hand = []             # List of eval7 cards
 
     @abstractmethod
     def action(self, state):

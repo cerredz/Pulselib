@@ -28,10 +28,9 @@ class Poker(gym.Env):
         # Observation Space
         obs_size = 12 + ((self.n-1) * 3)
         self.observation_space = spaces.Box(low=0, high=10000, shape=(obs_size,), dtype=np.float32)
-
         self.deck = eval7.Deck()
         self.players = agents if agents else []
-        self.button_pos = 0
+        self.button_pos=0
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
