@@ -75,7 +75,24 @@ class PokerGPU(gym.Env):
         return self.get_obs(), self.get_info()
 
     def get_obs(self):
-        obs=torch.tensor()
+        g = torch.arange(self.n_games, device=self.device)
+        obs_parts = [
+            self.board,  # [n_games, 5]
+            self.hands[g, self.idx],  # [n_games, 2]
+            self.stages.unsqueeze(1),  # [n_games, 1]
+            ((self.idx - self.button) % self.n_players).unsqueeze(1),  # [n_games, 1]
+            self.pots.unsqueeze(1),  # [n_games, 1]
+            (self.highest - self.current_round_bet[g, self.idx]).unsqueeze(1),  # [n_games, 1]
+            self.stacks[g, self.idx].unsqueeze(1)  # [n_games, 1]
+        ]
+        for i in range(1, self.n_players):
+            opp = (self.idx + i) % self.n_players
+            obs_parts.extend([
+                self.stacks[g, opp].unsqueeze(1),
+                (self.status[g, opp] == self.ACTIVE).float().unsqueeze(1),
+                self.current_round_bet[g, opp].unsqueeze(1)
+            ])
+        return torch.cat(obs_parts, dim=1)
 
     def get_info(self):
         pass
