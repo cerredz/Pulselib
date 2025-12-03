@@ -63,12 +63,12 @@ class PokerGPU(gym.Env):
         self.status = torch.full((self.n_games, self.n_players), self.ACTIVE, dtype=torch.uint8, device=self.device)
 
         self.button = (self.button + 1) % self.n_players if hasattr(self, 'button_pos') else torch.zeros(self.n_games, dtype=torch.long, device=self.device)
-        self.sb = (self.button_pos + 1) % self.n_players
-        self.bb = (self.button_pos + 2) % self.n_players
+        self.sb = (self.button + 1) % self.n_players
+        self.bb = (self.button + 2) % self.n_players
 
         self.post_blinds()
 
-        self.idx = (self.bb_pos + 1) % self.n_players
+        self.idx = (self.bb + 1) % self.n_players
         self.highest = torch.ones(self.n_games, dtype=torch.uint32, device=self.device)
         self.agg = self.bb.clone()
         self.acted = torch.zeros(self.n_games, dtype=torch.uint8, device=self.device)
@@ -212,6 +212,225 @@ class PokerGPU(gym.Env):
 
             self.acted[raise_mask] += 1 # increase acted for raisers and callers
 
+    def mask_royal_flush(self, num_show, suits, ranks):
+        royal_flush_mask = torch.zeros(num_show, self.n_players, dtype=torch.bool, device=self.device)
+        for suit in range(4): 
+            suit_mask = (suits == suit)  # [num_show, n_players, 7]
+            royal_ranks = torch.tensor([8, 9, 10, 11, 12], device=self.device)  # 10, J, Q, K, A
+            has_all_royal_ranks = torch.ones(num_show, self.n_players, dtype=torch.bool, device=self.device)
+            
+            for rank in royal_ranks:
+                # Check if this rank exists in this suit
+                has_rank_in_suit = ((ranks == rank) & suit_mask).any(dim=2)  # [num_show, n_players]
+                has_all_royal_ranks &= has_rank_in_suit
+            
+            # Players who have all 5 royal ranks in this suit have a royal flush
+            royal_flush_mask |= has_all_royal_ranks
+        return royal_flush_mask
+
+    def mask_straight_flush(self, num_show, suits, ranks, royal_flush_mask):
+        straight_flush_mask = torch.zeros(num_show, self.n_players, dtype=torch.bool, device=self.device)
+        straight_flush_high_card = torch.zeros(num_show, self.n_players, dtype=torch.long, device=self.device)
+        
+        for suit in range(4):
+            suit_mask = (suits == suit)
+            
+            # Check all possible straights (A-2-3-4-5 through 9-10-J-Q-K)
+            # Straights are 5 consecutive ranks
+            # Possible high cards: 3 (for A-2-3-4-5), 4, 5, 6, 7, 8, 9, 10, 11, 12 (for 8-9-10-J-Q)
+            
+            for high_card in range(3, 13):  # High card of straight: 3 through 12
+                # Build the 5 consecutive ranks
+                straight_ranks = torch.tensor([high_card-3, high_card-2, high_card-1, high_card, high_card+1] if high_card < 12 
+                                            else [high_card-4, high_card-3, high_card-2, high_card-1, high_card], 
+                                            device=self.device)
+                
+                # Special case: wheel straight (A-2-3-4-5, high card is 5 which is rank 3)
+                if high_card == 3:
+                    straight_ranks = torch.tensor([0, 1, 2, 3, 12], device=self.device)  # 2,3,4,5,Ace
+                else:
+                    straight_ranks = torch.arange(high_card-4, high_card+1, device=self.device)
+                
+                # Check if all ranks in this straight exist in this suit
+                has_all_straight_ranks = torch.ones(num_show, self.n_players, dtype=torch.bool, device=self.device)
+                
+                for rank in straight_ranks:
+                    has_rank_in_suit = ((ranks == rank) & suit_mask).any(dim=2)
+                    has_all_straight_ranks &= has_rank_in_suit
+                
+                # Update straight flush mask and track highest straight flush
+                is_new_straight_flush = has_all_straight_ranks & ~straight_flush_mask
+                straight_flush_mask |= has_all_straight_ranks
+                
+                # Track the high card of the best straight flush
+                straight_flush_high_card = torch.where(
+                    is_new_straight_flush,
+                    torch.full_like(straight_flush_high_card, high_card),
+                    straight_flush_high_card
+                )
+        
+        # Exclude royal flushes from straight flush mask
+        straight_flush_mask = straight_flush_mask & ~royal_flush_mask
+        return straight_flush_mask, straight_flush_high_card
+
+    def mask_four_of_a_kind(self, num_show, suits, ranks):
+        four_of_a_kind_mask = torch.zeros(num_show, self.n_players, dtype=torch.bool, device=self.device)
+        four_kind_rank = torch.zeros(num_show, self.n_players, dtype=torch.long, device=self.device)
+        four_kind_kicker = torch.zeros(num_show, self.n_players, dtype=torch.long, device=self.device)
+        
+        # For each possible rank (0-12), check if player has 4 of that rank
+        for rank in range(13):  # 0=2, 1=3, ..., 12=Ace
+            # Count how many cards of this rank each player has
+            rank_mask = (ranks == rank)  # [num_show, n_players, 7]
+            rank_count = rank_mask.sum(dim=2)  # [num_show, n_players] - count of this rank
+            
+            # Players with exactly 4 of this rank have four of a kind
+            has_four = (rank_count == 4)  # [num_show, n_players]
+            
+            # Update mask (use OR to catch if player has multiple four of a kinds - take highest)
+            is_new_four = has_four & ~four_of_a_kind_mask
+            four_of_a_kind_mask |= has_four
+            
+            # Track the rank of the four of a kind (higher rank wins tiebreaker)
+            # Only update if this is a new four OR a higher-ranked four
+            is_better_four = has_four & (rank > four_kind_rank)
+            four_kind_rank = torch.where(is_better_four, rank, four_kind_rank)
+            
+            # For players with this four of a kind, find their best kicker
+            if has_four.any():
+                # Get all cards that are NOT part of the four of a kind
+                not_four_mask = ranks != rank  # [num_show, n_players, 7]
+                
+                # Find the highest kicker (max rank among non-four cards)
+                # Set four-of-a-kind cards to -1 so they don't get picked as kicker
+                kicker_ranks = torch.where(not_four_mask, ranks, torch.tensor(-1, device=self.device))
+                best_kicker = kicker_ranks.max(dim=2).values  # [num_show, n_players]
+                
+                # Update kicker only for players with this specific four of a kind
+                # and only if it's better than their current kicker
+                should_update_kicker = has_four & (rank == four_kind_rank)
+                four_kind_kicker = torch.where(should_update_kicker, best_kicker, four_kind_kicker)
+        
+        return four_of_a_kind_mask, four_kind_rank, four_kind_kicker
+
+    def mask_full_house(self, num_show, suits, ranks, player_mask):
+        """
+        Detect full house hands (three of a kind + pair).
+        
+        Returns:
+            full_house_mask: [num_show, n_players] - True where player has full house
+            full_house_trips: [num_show, n_players] - Rank of the three of a kind
+            full_house_pair: [num_show, n_players] - Rank of the pair
+        """
+        full_house_mask = torch.zeros(num_show, self.n_players, dtype=torch.bool, device=self.device)
+        full_house_trips = torch.full((num_show, self.n_players), -1, dtype=torch.long, device=self.device)
+        full_house_pair = torch.full((num_show, self.n_players), -1, dtype=torch.long, device=self.device)
+        
+        # Count occurrences of each rank for each player
+        rank_counts = torch.zeros(num_show, self.n_players, 13, dtype=torch.long, device=self.device)
+        
+        for rank in range(13):
+            rank_mask = (ranks == rank)  # [num_show, n_players, 7]
+            rank_counts[:, :, rank] = rank_mask.sum(dim=2)  # Count this rank
+        
+        # Find all ranks where player has 3+ cards (potential trips)
+        trips_mask = (rank_counts >= 3)  # [num_show, n_players, 13]
+        
+        # Find all ranks where player has 2+ cards (potential pairs)
+        pair_mask = (rank_counts >= 2)  # [num_show, n_players, 13]
+        
+        # For each player, find their best trips and best pair
+        for game_idx in range(num_show):
+            for player_idx in range(self.n_players):
+                if not player_mask[game_idx, player_idx]:
+                    continue  # Skip folded players
+                
+                # Get ranks where this player has trips (3+)
+                trips_ranks = torch.where(trips_mask[game_idx, player_idx])[0]
+                
+                # Get ranks where this player has pairs (2+)
+                pair_ranks = torch.where(pair_mask[game_idx, player_idx])[0]
+                
+                if len(trips_ranks) == 0:
+                    continue  # No trips, no full house
+                
+                # Best trips is the highest rank with 3+
+                best_trips = trips_ranks.max().item()
+                
+                # For the pair, we need a DIFFERENT rank with 2+
+                # Case 1: Player has two different trips (e.g., 3 Aces + 3 Kings) -> use second trips as pair
+                # Case 2: Player has trips + separate pair (e.g., 3 Aces + 2 Kings)
+                # Case 3: Player has quads + pair (e.g., 4 Aces + 2 Kings) -> trips is Aces, pair is Kings
+                
+                # Find potential pair ranks (exclude the trips rank we're using)
+                potential_pairs = pair_ranks[pair_ranks != best_trips]
+                
+                if len(potential_pairs) == 0:
+                    # Check if we have 4+ of the trips rank (quads can be split into trips + pair)
+                    if rank_counts[game_idx, player_idx, best_trips] >= 5:
+                        # 5+ of same rank (e.g., board + hand both have Aces) -> trips and pair are same rank
+                        best_pair = best_trips
+                    else:
+                        continue  # No valid pair, no full house
+                else:
+                    # Use the highest pair rank
+                    best_pair = potential_pairs.max().item()
+                
+                # Valid full house found
+                full_house_mask[game_idx, player_idx] = True
+                full_house_trips[game_idx, player_idx] = best_trips
+                full_house_pair[game_idx, player_idx] = best_pair
+        
+        return full_house_mask, full_house_trips, full_house_pair
+
+    def mask_flush(self, num_show, suits, ranks, player_mask, straight_flush_mask, royal_flush_mask):
+        # logs
+        flush_mask = torch.zeros(num_show, self.n_players, dtype=torch.bool, device=self.device)
+        flush_cards = torch.full((num_show, self.n_players, 5), -1, dtype=torch.long, device=self.device)
+        
+        # For each suit, check if player has 5+ cards
+        for suit in range(4):  # 0=clubs, 1=diamonds, 2=spades, 3=hearts
+            suit_mask = (suits == suit)  # [num_show, n_players, 7]
+            suit_count = suit_mask.sum(dim=2)  # [num_show, n_players] - count of this suit
+            
+            # Players with 5+ cards of this suit have a flush
+            has_flush = (suit_count >= 5)  # [num_show, n_players]
+            
+            if not has_flush.any():
+                continue  # No flushes in this suit
+            
+            # For players with flush in this suit, extract the ranks of suited cards
+            for game_idx in range(num_show):
+                for player_idx in range(self.n_players):
+                    if not has_flush[game_idx, player_idx]:
+                        continue
+                    if not player_mask[game_idx, player_idx]:
+                        continue  # Skip folded players
+                    
+                    # Get all cards of this suit for this player
+                    suited_cards_mask = suit_mask[game_idx, player_idx]  # [7]
+                    suited_ranks = ranks[game_idx, player_idx][suited_cards_mask]  # [5, 6, or 7] ranks
+                    
+                    # Sort in descending order and take top 5
+                    sorted_suited_ranks, _ = torch.sort(suited_ranks, descending=True)
+                    top_5_ranks = sorted_suited_ranks[:5]  # Take best 5 cards
+                    
+                    # Update flush mask and cards
+                    flush_mask[game_idx, player_idx] = True
+                    flush_cards[game_idx, player_idx] = top_5_ranks
+        
+        # Exclude straight flushes and royal flushes
+        flush_mask = flush_mask & ~straight_flush_mask & ~royal_flush_mask
+        
+        # Clear flush_cards for non-flush players (set to -1)
+        flush_cards = torch.where(
+            flush_mask.unsqueeze(2).expand(-1, -1, 5),
+            flush_cards,
+            torch.tensor(-1, device=self.device)
+        )
+        
+        return flush_mask, flush_cards
+
     def calculate_showdown_winners(self, g):
         # need way to calculate winners on the gpu when multiple people are left
         # here is where we will do it
@@ -236,16 +455,37 @@ class PokerGPU(gym.Env):
         # find active players in these games
         g_show=torch.where(showdown_mask)[0]
         num_show=len(g_show)
-        
         player_mask = ((self.status[g_show] == self.ACTIVE) | (self.status[g_show] == self.ALLIN))
-        full_hands = torch.cat([self.hands[g_show], self.board[g_show].unsqueeze(1).expand(-1, self.n_players, -1)], dim=2)  # [num_show, n_players, 7]
-        valid_cards=(full_hands>0)
-        full_hands[~valid_cards]=0
+        
+        # fill out imcomplete boards
+        incomplete_mask = (self.board[g_show] == -1).any(dim=1)  # [num_show] - True if board has any -1
+        if incomplete_mask.any():
+            incomplete_games = g_show[incomplete_mask]
+            for game_idx in incomplete_games:
+                # Find how many cards are missing
+                board_cards = self.board[game_idx]
+                missing_positions = (board_cards == -1)
+                n_missing = missing_positions.sum().item()
+                
+                if n_missing > 0:
+                    # Deal missing cards from deck
+                    new_cards = self.deal_cards(game_idx.unsqueeze(0), n_missing).squeeze(0)
+                    # Fill in the missing positions
+                    self.board[game_idx, missing_positions] = new_cards
 
+        full_hands = torch.cat([self.hands[g_show], self.board[g_show].unsqueeze(1).expand(-1, self.n_players, -1)], dim=2)  # [num_show, n_players, 7]
         ranks, suits = full_hands%13, full_hands//13
 
-        sorted_ranks, _= torch.sort(ranks, dim=2, device=self.device, descending=True) # [num_show, n_players, 7]
+        # find hand strength masks
+        royal_flush_mask=self.mask_royal_flush(num_show, suits, ranks) & player_mask
+        straight_flush_mask, straight_flush_high_card=self.mask_straight_flush(num_show, suits, ranks, royal_flush_mask) & player_mask
+        four_of_a_kind_mask, four_kind_rank, four_kind_kicker = self.mask_four_of_a_kind(num_show, suits, ranks) & player_mask
+        full_house_mask, full_house_trips, full_house_pair = self.mask_full_house(num_show, suits, ranks, player_mask)
+        flush_mask, flush_cards = self.mask_flush(num_show, suits, ranks, player_mask, straight_flush_mask, royal_flush_mask)
 
+        pass
+
+    def resolve_winner_by_fold(self):
         pass
 
     def step(self, actions):
@@ -263,7 +503,7 @@ class PokerGPU(gym.Env):
         next_player_idx=self.idx.clone()
         is_round_over=torch.zeros(self.n_games, dtype=torch.bool, device=self.device)
         searching=torch.ones(self.n_games, dtype=torch.bool, device=self.device)
-        for _ in range(self.n_games):
+        for _ in range(self.n_players):
             next_player_idx[searching]=(next_player_idx[searching]+1)%self.n_players
             # round over check
             back_to_agg=(next_player_idx==self.agg)
