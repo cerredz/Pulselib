@@ -1,11 +1,10 @@
 from multiprocessing import Value
 from operator import truediv
-from re import L
-from environments.Poker.utils import Agent, validate_agents
 import torch
 import gymnasium as gym
 from gymnasium import spaces
 from typing import List
+import numpy as np
 
 class PokerGPU(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -18,7 +17,7 @@ class PokerGPU(gym.Env):
 
         # env 
         self.device=device
-        self.agents=validate_agents(agents=agents)
+        self.agents=agents
         self.n_players=n_players
         self.n_games=n_games
         self.starting_bbs=starting_bbs
@@ -28,8 +27,8 @@ class PokerGPU(gym.Env):
         self.action_space=spaces.Discrete(self.NUM_ACTIONS)
         self.raise_fractions=torch.tensor([0.25, 0.33, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00, 4.00], device=self.device)
         self.obs_size=12+((self.n_players-1)*3)
-        self.observation_space = spaces.Box(low=0, high=10000, shape=(self.obs_size,), dtype=torch.float32)
-
+        self.observation_space = spaces.Box(low=0, high=10000, shape=(self.obs_size,), dtype=np.float32)
+        
         # Initialize state tensors as None (will be set in reset)
         self.stacks = None
         self.total_busted=0
@@ -39,16 +38,16 @@ class PokerGPU(gym.Env):
         
         # game state tensors
         self.decks=torch.stack([torch.randperm(52, device=self.device) for _ in range(self.n_games)])
-        self.deck_positions=torch.zeros(self.n_games, device=self.device, dtype=torch.uint8)
+        self.deck_positions=torch.zeros(self.n_games, device=self.device, dtype=torch.int32)
         
-        self.board = torch.full((self.n_games, 5), -1, dtype=torch.uint8, device=self.device)
-        self.pots = torch.zeros(self.n_games, dtype=torch.uint32, device=self.device)
-        self.stages = torch.zeros(self.n_games, dtype=torch.uint32, device=self.device)
+        self.board = torch.full((self.n_games, 5), -1, dtype=torch.int32, device=self.device)
+        self.pots = torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
+        self.stages = torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
 
         # player state tensors
         # refill/reset stacks
         if self.stacks is None:
-            self.stacks = torch.full((self.n_games, self.n_players), self.starting_bbs, dtype=torch.float32, device=self.device)
+            self.stacks = torch.full((self.n_games, self.n_players), self.starting_bbs, dtype=torch.int32, device=self.device)
         else:
             busted = (self.stacks == 0)
             above_max = (self.stacks > self.max_bbs)
@@ -58,20 +57,20 @@ class PokerGPU(gym.Env):
         
         self.hands = self.deal_players_cards(self.n_players * 2).view(self.n_games, self.n_players, 2)
 
-        self.current_round_bet = torch.zeros((self.n_games, self.n_players), dtype=torch.uint32, device=self.device)
-        self.total_invested = torch.zeros((self.n_games, self.n_players), dtype=torch.uint32, device=self.device)
-        self.status = torch.full((self.n_games, self.n_players), self.ACTIVE, dtype=torch.uint8, device=self.device)
+        self.current_round_bet = torch.zeros((self.n_games, self.n_players), dtype=torch.int32, device=self.device)
+        self.total_invested = torch.zeros((self.n_games, self.n_players), dtype=torch.int32, device=self.device)
+        self.status = torch.full((self.n_games, self.n_players), self.ACTIVE, dtype=torch.int32, device=self.device)
 
-        self.button = (self.button + 1) % self.n_players if hasattr(self, 'button_pos') else torch.zeros(self.n_games, dtype=torch.long, device=self.device)
+        self.button = (self.button + 1) % self.n_players if hasattr(self, 'button_pos') else torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
         self.sb = (self.button + 1) % self.n_players
         self.bb = (self.button + 2) % self.n_players
 
         self.post_blinds()
 
         self.idx = (self.bb + 1) % self.n_players
-        self.highest = torch.ones(self.n_games, dtype=torch.uint32, device=self.device)
+        self.highest = torch.ones(self.n_games, dtype=torch.int32, device=self.device)
         self.agg = self.bb.clone()
-        self.acted = torch.zeros(self.n_games, dtype=torch.uint8, device=self.device)
+        self.acted = torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
 
         self.is_done = torch.zeros(self.n_games, dtype=torch.bool, device=self.device)
         return self.get_obs(), self.get_info()
@@ -97,13 +96,13 @@ class PokerGPU(gym.Env):
         return torch.cat(obs_parts, dim=1)
 
     def get_info(self):
-        pass
+        return {}
 
     def post_blinds(self):
         # handle the logic of when we "bet" the blinds for the small and big blinds
         # handle only big blind, small blind gets rounded down to 0
         game_idx=torch.arange(self.n_games, device=self.device)
-        bb_amount=torch.ones(self.n_games, dtype=torch.uint8, device=self.device)
+        bb_amount=torch.ones(self.n_games, dtype=torch.int32, device=self.device)
         self.stacks[game_idx, self.bb] -= bb_amount
         self.current_round_bet[game_idx, self.bb] += bb_amount
         self.total_invested[game_idx, self.bb] += bb_amount
@@ -112,7 +111,7 @@ class PokerGPU(gym.Env):
             self.stacks[game_idx, self.bb] == 0,
             self.ALLIN,
             self.ACTIVE
-        )
+        ).to(torch.int32)
 
     def deal_players_cards(self, n_cards):
         """Deal n_cards from each game's deck, deal to players in the preflop_stage"""
@@ -126,7 +125,7 @@ class PokerGPU(gym.Env):
         # deals cards at a stage past the preflop, no longer dealing to players, but rather to 
         # the board
         n=len(g)
-        if n==0: return torch.empty(0, n_cards, dtype=torch.uint8, device=self.device)
+        if n==0: return torch.empty(0, n_cards, dtype=torch.int32, device=self.device)
 
         card_idx = self.deck_positions[g].unsqueeze(1) + torch.arange(n_cards, device=self.device).unsqueeze(0)        
         cards = self.decks[g.unsqueeze(1), card_idx]
@@ -156,7 +155,7 @@ class PokerGPU(gym.Env):
                 self.stacks[g[call_mask], self.idx[call_mask]] == 0,
                 self.ALLIN,
                 self.status[g[call_mask], self.idx[call_mask]]
-            )
+            ).to(torch.int32)
             self.acted[call_mask] += 1
 
         # raising
@@ -184,7 +183,7 @@ class PokerGPU(gym.Env):
             if potsize_mask.any():
                 frac_indices=actions[potsize_mask]-3
                 fractions=self.raise_fractions[frac_indices]
-                raise_amounts[potsize_mask] = (self.pots[potsize_mask] * fractions).to(torch.uint32)
+                raise_amounts[potsize_mask] = (self.pots[potsize_mask] * fractions).to(torch.int32)
             
             total_needed=call_costs+raise_amounts
             actual_bets=torch.min(total_needed[raise_mask], self.stacks[g[raise_mask], self.idx[raise_mask]])
@@ -200,7 +199,7 @@ class PokerGPU(gym.Env):
                 self.stacks[g[raise_mask], self.idx[raise_mask]] == 0,
                 self.ALLIN,
                 self.status[g[raise_mask], self.idx[raise_mask]]
-            )
+            ).to(torch.int32)
 
             raise_indices=torch.where(raise_mask)[0]
             pure_raise_indices=raise_indices[is_raise]

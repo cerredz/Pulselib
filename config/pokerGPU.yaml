@@ -1,0 +1,26 @@
+RESULTS_DIR: "Poker"
+ENV_ID: "Pulse-Poker-GPU-v1"
+PLOT_FILENAME: ""
+SCORES_FILENAME: ""
+AGENTS:
+  - "qlearning"
+  - "heuristic"
+  - "heuristic"
+  - "heuristic"
+  - "random"
+  - "random"
+
+N_GAMES: 100
+EPISODES: 5000
+
+STARTING_BBS: 100
+NUM_PLAYERS: 6
+
+STATE_SPACE: 27
+ACTION_SPACE: 13
+
+W1: 2
+W2: .5
+W1_DECAY: .99999
+W2_DECAY: .9999
+K: 100

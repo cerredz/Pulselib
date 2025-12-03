@@ -12,3 +12,8 @@ register(
     max_episode_steps=200000 
 )
 
+register(
+    id='Pulse-Poker-GPU-v1',
+    entry_point='environments.Poker:PokerGPU',
+    max_episode_steps=200000 
+)

@@ -1,9 +1,8 @@
 # utility functions for our poker environment
 import math
-from typing import List
 import enum
 import eval7
-from dataclasses import dataclass
+import torch
 
 _FULL_RANGE = eval7.HandRange("AA,KK,QQ,JJ,TT,99,88,77,66,55,44,33,22,AKs,AKo,AQs,AQo,AJs,AJo,ATs,ATo,A9s,A9o,A8s,A8o,A7s,A7o,A6s,A6o,A5s,A5o,A4s,A4o,A3s,A3o,A2s,A2o,KQs,KQo,KJs,KJo,KTs,KTo,K9s,K9o,K8s,K8o,K7s,K7o,K6s,K6o,K5s,K5o,K4s,K4o,K3s,K3o,K2s,K2o,QJs,QJo,QTs,QTo,Q9s,Q9o,Q8s,Q8o,Q7s,Q7o,Q6s,Q6o,Q5s,Q5o,Q4s,Q4o,Q3s,Q3o,Q2s,Q2o,JTs,JTo,J9s,J9o,J8s,J8o,J7s,J7o,J6s,J6o,J5s,J5o,J4s,J4o,J3s,J3o,J2s,J2o,T9s,T9o,T8s,T8o,T7s,T7o,T6s,T6o,T5s,T5o,T4s,T4o,T3s,T3o,T2s,T2o,98s,98o,97s,97o,96s,96o,95s,95o,94s,94o,93s,93o,92s,92o,87s,87o,86s,86o,85s,85o,84s,84o,83s,83o,82s,82o,76s,76o,75s,75o,74s,74o,73s,73o,72s,72o,65s,65o,64s,64o,63s,63o,62s,62o,54s,54o,53s,53o,52s,52o,43s,43o,42s,42o,32s,32o")
 
@@ -87,13 +86,69 @@ def load_agents(num_players: int, agent_types: list, starting_stack: int, action
     from agents.TemperalDifference.PokerQLearning import PokerQLearning
     from environments.Poker.Player import HeuristicPlayer, RandomPlayer
     players = []
+    types=[]
     assert len(agent_types) == num_players
     for i, a_type in enumerate(agent_types):
-        if a_type == 'qlearning': p = PokerQLearning(i, starting_stack, action_space_n)
-        elif a_type == 'random': p = RandomPlayer(starting_stack, i)
-        else: p = HeuristicPlayer(starting_stack, i)
+        agent_type=None
+        if a_type == 'random': 
+            p = RandomPlayer(starting_stack, i)
+            agent_type=PokerAgentType.RANDOM
+        else: 
+            p = HeuristicPlayer(starting_stack, i)
+            agent_type=PokerAgentType.HEURISTIC
         players.append(p)
-    return players
+        types.append(agent_type)
+    return players, types
+
+def build_actions(state, curr_players, agents, agent_types, device, epsilon=0.1):
+    n_games = state.shape[0]
+    actions = torch.zeros(n_games, dtype=torch.long, device=device)
+    
+    for agent_idx, agent_type in enumerate(agent_types):
+        mask = (curr_players == agent_idx)
+        if not mask.any():
+            continue
+            
+        game_indices = torch.where(mask)[0]
+        agent_states = state[mask]
+        
+        if agent_type == PokerAgentType.QLEARNING:
+            with torch.no_grad():
+                q_values = agents[agent_idx](agent_states)
+                explore_mask = torch.rand(len(agent_states), device=device) < epsilon
+                greedy_actions = q_values.argmax(dim=1)
+                random_actions = torch.randint(0, 13, (len(agent_states),), device=device)
+                agent_actions = torch.where(explore_mask, random_actions, greedy_actions)
+        
+        # need to change to gpu
+        elif agent_type == PokerAgentType.HEURISTIC:
+            agent_actions = torch.randint(0, 13, (len(agent_states),), device=device)
+        
+        # need to change to gpu
+        elif agent_type == PokerAgentType.RANDOM:
+            agent_actions = torch.randint(0, 13, (len(agent_states),), device=device)
+        
+        actions[game_indices] = agent_actions
+    
+    return actions
+
+def load_gpu_agents(num_players: int, agent_types: list, starting_stack: int, action_space_n: int) -> list:
+    from agents.TemperalDifference.PokerQLearning import PokerQLearning
+    from environments.Poker.Player import HeuristicPlayer, RandomPlayer
+    players = []
+    types=[]
+    assert len(agent_types) == num_players
+    for i, a_type in enumerate(agent_types):
+        agent_type=None
+        if a_type == 'random': 
+            p = RandomPlayer(starting_stack, i)
+            agent_type=PokerAgentType.RANDOM
+        else: 
+            p = HeuristicPlayer(starting_stack, i)
+            agent_type=PokerAgentType.HEURISTIC
+        players.append(p)
+        types.append(agent_type)
+    return players, types
 
 def debug_state(st, pid, aid):
     """Debug poker state - prints state, player ID, and action."""
@@ -108,62 +163,3 @@ def debug_state(st, pid, aid):
     
     print(f"Player: {pid} Action: {actions[aid]} | {stages[st[7]]} | Hand:{hand} Stack:{st[11]}BB Pos:{st[8]}\n"
           f"Board:{board} Pot:{st[9]}BB Call:{st[10]}BB | {opps}")
-
-@dataclass
-class Agent:
-    id: int
-    stack_size: int
-    current_round_bet: int
-    total_invested: int
-    status: str # 'active', 'folded', or 'allin'
-    hand1: int
-    hand2: int
-
-def validate_agents(self, agents) -> List[Agent]:
-    print("Validating Agents...")
-        
-    if not agents:
-        raise ValueError("Agent list cannot be empty.")
-        
-    if len(agents) != self.n_players:
-        raise ValueError(f"Number of agents ({len(agents)}) must match n_players ({self.n_players}).")
-        
-    for idx, agent in enumerate(agents):
-        if not isinstance(agent, Agent): 
-            raise ValueError(f"Agent at index {idx} is not of type Agent. Got {type(agent).__name__} instead.")
-            
-            # Check required attributes with proper string quotes
-        if not hasattr(agent, 'id') or not hasattr(agent, 'stack_size') or not hasattr(agent, 'current_round_bet') or not hasattr(agent, 'status'):
-            raise RuntimeError(f"Agent at index {idx} (id={getattr(agent, 'id', 'N/A')}) is missing required attributes. Required: ['id', 'stack_size', 'current_round_bet', 'total_invested', 'status', 'hand1', 'hand2']")
-            
-            # Additional attribute checks
-        if not hasattr(agent, 'total_invested') or not hasattr(agent, 'hand1') or not hasattr(agent, 'hand2'):
-            raise RuntimeError(f"Agent at index {idx} (id={agent.id}) is missing required attributes. Required: ['id', 'stack_size', 'current_round_bet', 'total_invested', 'status', 'hand1', 'hand2']")
-            
-            # Validate attribute types and values
-        if not isinstance(agent.id, int):
-            raise TypeError(f"Agent at index {idx}: 'id' must be an integer, got {type(agent.id).__name__}.")
-            
-        if not isinstance(agent.stack_size, (int, float)) or agent.stack_size < 0:
-            raise ValueError(f"Agent {agent.id}: 'stack_size' must be a non-negative number, got {agent.stack_size}.")
-            
-        if not isinstance(agent.current_round_bet, (int, float)) or agent.current_round_bet < 0:
-            raise ValueError(f"Agent {agent.id}: 'current_round_bet' must be a non-negative number, got {agent.current_round_bet}.")
-            
-        if not isinstance(agent.total_invested, (int, float)) or agent.total_invested < 0:
-            raise ValueError(f"Agent {agent.id}: 'total_invested' must be a non-negative number, got {agent.total_invested}.")
-            
-        if agent.status not in ['active', 'folded', 'allin']:
-            raise ValueError(f"Agent {agent.id}: 'status' must be one of ['active', 'folded', 'allin'], got '{agent.status}'.")
-            
-            # Validate hand cards
-        if not isinstance(agent.hand1, int) or not (0 <= agent.hand1 <= 51):
-            raise ValueError(f"Agent {agent.id}: 'hand1' must be an integer between 0 and 51, got {agent.hand1}.")
-            
-        if not isinstance(agent.hand2, int) or not (0 <= agent.hand2 <= 51):
-            raise ValueError(f"Agent {agent.id}: 'hand2' must be an integer between 0 and 51, got {agent.hand2}.")
-        
-        return agents
-
-
-

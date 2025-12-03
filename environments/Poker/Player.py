@@ -3,6 +3,8 @@ import random
 import eval7
 import math
 from environments.Poker.utils import decode_card
+import torch
+import torch.nn as nn
 
 class Player(ABC):
     """
@@ -66,4 +68,33 @@ class HeuristicPlayer(Player):
         return 1 if call_cost <= 0 else 0 
 
     def learn(self, episode): pass
+
+class PokerQNetwork(nn.Module):
+    def __init__(self, state_dim=27, action_dim=13, hidden_dim=256, lr=1e-4):
+        super().__init__()
+        
+        # Simple feedforward network
+        self.network = nn.Sequential(
+            nn.Linear(state_dim, 23),
+            nn.GELU(),
+            nn.Linear(23, 19),
+            nn.GELU(),
+            nn.Dropout(),
+            nn.Linear(19, 16),
+            nn.GELU(),
+            nn.Linear(16, action_dim)
+        )
+        
+        self.lr = lr
+    
+    def forward(self, states):
+        """
+        states: [batch_size, 27] tensor
+        returns: [batch_size, 13] Q-values
+        """
+        return self.network(states)
+    
+    def configure_optimizers(self):
+        return torch.optim.AdamW(self.parameters(), lr=self.lr)
+
 
