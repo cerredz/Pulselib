@@ -4,22 +4,39 @@ from environments.Poker.utils import PokerAgentType, build_actions, load_agents,
 from utils.config import get_config_file
 import gymnasium as gym
 from utils.torch import load_device
+from cProfile import Profile
 import torch
+import pstats
+
 
 CONFIG_FILENAME="pokerGPU.yaml"
 POKER_ACTION_SPACE_N=13
 
+import time                          # ← only new import
+
+
 def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device):
     g=torch.arange(n_games, device=device, dtype=torch.int32)
+    total_steps = 0
+    start_time = time.time()         # ← start timer
+    
     for i in range(episodes):
         state, info = env.reset()
-        terminated, truncated = False, False
-        while not terminated and not truncated:
-            curr_player_idxs=state[:, 8].long()
-            actions=build_actions(state, curr_player_idxs, agents, agent_types, device)
+        terminated = torch.zeros(n_games, dtype=torch.bool, device=device)
+        while not terminated.all():
+            curr_player_idxs = state[:, 8].long()
+            actions = build_actions(state, curr_player_idxs, agents, agent_types, device)
             next_state, rewards, dones, truncated, info = env.step(actions)
-            state=next_state
+            state = next_state
             terminated |= dones
+            total_steps += n_games       # one batch step = n_games env steps
+
+        # ← new sprint calculation and print
+        elapsed = time.time() - start_time
+        steps_per_sec = total_steps / elapsed if elapsed > 0 else 0
+        if i % 1 == 0:
+            print(f"Batch {i+1}/{episodes} | Total Steps: {total_steps} | "
+                  f"Speed: {steps_per_sec:.1f} steps/sec")
 
 if __name__ == "__main__":
     config=get_config_file(file_name=CONFIG_FILENAME)
@@ -45,5 +62,11 @@ if __name__ == "__main__":
         n_games=config["N_GAMES"], 
         starting_bbs=config["STARTING_BBS"], 
     )
-
+    profiler = Profile()
+    profiler.enable()
     train_agent(env, agents, agent_types, config["EPISODES"], config["N_GAMES"], device=device)
+    profiler.disable()
+
+    stats = pstats.Stats(profiler)
+    stats.sort_stats('cumulative')
+    stats.print_stats(20)  # Top 20 slowest calls

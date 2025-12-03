@@ -37,7 +37,7 @@ class PokerGPU(gym.Env):
         super().reset(seed=seed)
         
         # game state tensors
-        self.decks=torch.stack([torch.randperm(52, device=self.device) for _ in range(self.n_games)])
+        self.decks=torch.rand(self.n_games, 52, device=self.device).argsort(dim=1)
         self.deck_positions=torch.zeros(self.n_games, device=self.device, dtype=torch.int32)
         
         self.board = torch.full((self.n_games, 5), -1, dtype=torch.int32, device=self.device)
@@ -53,7 +53,7 @@ class PokerGPU(gym.Env):
             above_max = (self.stacks > self.max_bbs)
             self.stacks[busted] = self.starting_bbs
             self.stacks[above_max] = self.starting_bbs
-            self.total_busted+=busted.sum().items()
+            self.total_busted+=busted.sum().item()
         
         self.hands = self.deal_players_cards(self.n_players * 2).view(self.n_games, self.n_players, 2)
 
@@ -130,7 +130,7 @@ class PokerGPU(gym.Env):
         card_idx = self.deck_positions[g].unsqueeze(1) + torch.arange(n_cards, device=self.device).unsqueeze(0)        
         cards = self.decks[g.unsqueeze(1), card_idx]
         self.deck_positions[g] += n_cards
-        return cards
+        return cards.to(torch.int32)
 
     def execute_actions(self, g, actions):
         # executes the actions from the actions tensor for each of the current players
@@ -146,7 +146,7 @@ class PokerGPU(gym.Env):
         # call / check
         call_mask=(actions==1) & active_mask
         if call_mask.any():
-            actual_amounts = torch.min(call_costs[call_mask], self.stacks[g[call_mask], self.idx[call_mask]], device=self.device)
+            actual_amounts = torch.min(call_costs[call_mask], self.stacks[g[call_mask], self.idx[call_mask]])
             self.stacks[g[call_mask], self.idx[call_mask]] -= actual_amounts
             self.current_round_bet[g[call_mask], self.idx[call_mask]] += actual_amounts
             self.total_invested[g[call_mask], self.idx[call_mask]] += actual_amounts
@@ -161,14 +161,14 @@ class PokerGPU(gym.Env):
         # raising
         raise_mask=(actions >= 2) & active_mask
         if raise_mask.any():
-            raise_amounts=torch.zeros(self.n_games, dtype=torch.uint32, device=self.device)
+            raise_amounts=torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
             pt=self.pots+call_costs
 
             # min-raise
             min_raise_mask=(actions==2)&raise_mask
             if min_raise_mask.any():
                 raise_amounts[min_raise_mask] = torch.max(
-                    torch.ones(min_raise_mask.sum(), device=self.device), # case where no one has bet yet
+                    torch.ones(min_raise_mask.sum(), dtype=torch.int32, device=self.device), # case where no one has bet yet
                     call_costs[min_raise_mask]
                 )
 
@@ -179,7 +179,7 @@ class PokerGPU(gym.Env):
                 raise_amounts[all_in_mask]=self.stacks[g[all_in_mask], self.idx[all_in_mask]]
 
             # pot_sized fraction bets
-            potsize_mask=(actions>=3 & actions<= 11) & raise_mask
+            potsize_mask=((actions>=3) & (actions<= 11)) & raise_mask
             if potsize_mask.any():
                 frac_indices=actions[potsize_mask]-3
                 fractions=self.raise_fractions[frac_indices]
@@ -521,7 +521,7 @@ class PokerGPU(gym.Env):
 
         # 3) handle round transitions & game ends
         terminated = torch.zeros(self.n_games, dtype=torch.bool, device=self.device)
-        stack_changes = torch.zeros(self.n_games, dtype=torch.uint32, device=self.device)
+        stack_changes = torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
         active_counts=((self.status == self.ACTIVE) | (self.status == self.ALLIN)).sum(dim=1)
         early_term=(active_counts <= 1)&is_round_over
         terminated[early_term]=True
@@ -540,7 +540,8 @@ class PokerGPU(gym.Env):
             river_mask = (self.stages[transition_mask] == 3)
 
             post_river=(self.stages[transition_mask]>3)
-            terminated[transition_mask & post_river]=True
+            post_river_games = g_over[post_river]
+            terminated[post_river_games] = True
 
             for street_mask, n_cards, start_col in [(flop_mask, 3, 0), (turn_mask, 1, 3), (river_mask, 1, 4)]:
                 if street_mask.any():
@@ -551,6 +552,13 @@ class PokerGPU(gym.Env):
 
         # showdown resolution, resolve winner by fold, stack change calculation for rewards
 
+        next_obs = self.get_obs()
+        rewards = torch.zeros(self.n_games, device=self.device)  # Placeholder
+        terminated = torch.ones(self.n_games, dtype=torch.bool, device=self.device)  # All False for now
+        truncated = torch.zeros(self.n_games, dtype=torch.bool, device=self.device)  # All False
+        info = {}
+
+        return self.get_obs(), rewards, terminated, truncated, info
 
 
 
