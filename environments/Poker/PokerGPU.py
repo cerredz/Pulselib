@@ -1,9 +1,6 @@
-from multiprocessing import Value
-from operator import truediv
 import torch
 import gymnasium as gym
 from gymnasium import spaces
-from typing import List
 import numpy as np
 
 class PokerGPU(gym.Env):
@@ -12,9 +9,12 @@ class PokerGPU(gym.Env):
     ACTIVE, FOLDED, ALLIN = 0, 1, 2
     STATE_SPACE=28 # details in depth_notes in rl folder
 
-    def __init__(self, device, agents, n_players=6, n_games=100, starting_bbs=100, max_bbs=1000):
+    def __init__(self, device, agents, n_players=6, n_games=100, starting_bbs=100, max_bbs=1000, w1=.5, w2=.5, K=20):
         super().__init__()
 
+        self.w1=w1
+        self.w2=w2
+        self.K=K
         # env 
         self.device=device
         self.agents=agents
@@ -31,7 +31,6 @@ class PokerGPU(gym.Env):
         
         # Initialize state tensors as None (will be set in reset)
         self.stacks = None
-        self.total_busted=0
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -53,7 +52,6 @@ class PokerGPU(gym.Env):
             above_max = (self.stacks > self.max_bbs)
             self.stacks[busted] = self.starting_bbs
             self.stacks[above_max] = self.starting_bbs
-            self.total_busted+=busted.sum().item()
         
         self.hands = self.deal_players_cards(self.n_players * 2).view(self.n_games, self.n_players, 2)
 
@@ -86,6 +84,7 @@ class PokerGPU(gym.Env):
             (self.highest - self.current_round_bet[g, self.idx]).unsqueeze(1),  # [n_games, 1]
             self.stacks[g, self.idx].unsqueeze(1)  # [n_games, 1]
         ]
+        
         for i in range(1, self.n_players):
             opp = (self.idx + i) % self.n_players
             obs_parts.extend([
@@ -139,77 +138,68 @@ class PokerGPU(gym.Env):
 
         # fold
         fold_mask=(actions==0) & active_mask
-        if fold_mask.any():
-            self.status[g[fold_mask], self.idx[fold_mask]] = self.FOLDED
-            self.acted[fold_mask] += 1
+        self.status[g[fold_mask], self.idx[fold_mask]] = self.FOLDED
+        self.acted[fold_mask] += 1
 
         # call / check
         call_mask=(actions==1) & active_mask
-        if call_mask.any():
-            actual_amounts = torch.min(call_costs[call_mask], self.stacks[g[call_mask], self.idx[call_mask]])
-            self.stacks[g[call_mask], self.idx[call_mask]] -= actual_amounts
-            self.current_round_bet[g[call_mask], self.idx[call_mask]] += actual_amounts
-            self.total_invested[g[call_mask], self.idx[call_mask]] += actual_amounts
-            self.pots[call_mask] += actual_amounts
-            self.status[g[call_mask], self.idx[call_mask]] = torch.where(
-                self.stacks[g[call_mask], self.idx[call_mask]] == 0,
-                self.ALLIN,
-                self.status[g[call_mask], self.idx[call_mask]]
-            ).to(torch.int32)
-            self.acted[call_mask] += 1
+        actual_amounts = torch.min(call_costs[call_mask], self.stacks[g[call_mask], self.idx[call_mask]])
+        self.stacks[g[call_mask], self.idx[call_mask]] -= actual_amounts
+        self.current_round_bet[g[call_mask], self.idx[call_mask]] += actual_amounts
+        self.total_invested[g[call_mask], self.idx[call_mask]] += actual_amounts
+        self.pots[call_mask] += actual_amounts
+        self.status[g[call_mask], self.idx[call_mask]] = torch.where(
+            self.stacks[g[call_mask], self.idx[call_mask]] == 0,
+            self.ALLIN,
+            self.status[g[call_mask], self.idx[call_mask]]
+        ).to(torch.int32)
+        self.acted[call_mask] += 1
 
         # raising
         raise_mask=(actions >= 2) & active_mask
-        if raise_mask.any():
-            raise_amounts=torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
-            pt=self.pots+call_costs
+        raise_amounts=torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
+        pt=self.pots+call_costs
+        # min-raise
+        min_raise_mask=(actions==2)&raise_mask
+        raise_amounts[min_raise_mask] = torch.max(
+            torch.ones(min_raise_mask.sum(), dtype=torch.int32, device=self.device), # case where no one has bet yet
+            call_costs[min_raise_mask]
+        )
+        # all in 
+        all_in_mask=(actions == 12) & raise_mask
+        # handle all ins
+        if all_in_mask.any():
+            raise_amounts[all_in_mask]=self.stacks[g[all_in_mask], self.idx[all_in_mask]]
 
-            # min-raise
-            min_raise_mask=(actions==2)&raise_mask
-            if min_raise_mask.any():
-                raise_amounts[min_raise_mask] = torch.max(
-                    torch.ones(min_raise_mask.sum(), dtype=torch.int32, device=self.device), # case where no one has bet yet
-                    call_costs[min_raise_mask]
-                )
-
-            # all in 
-            all_in_mask=(actions == 12) & raise_mask
-            # handle all ins
-            if all_in_mask.any():
-                raise_amounts[all_in_mask]=self.stacks[g[all_in_mask], self.idx[all_in_mask]]
-
-            # pot_sized fraction bets
-            potsize_mask=((actions>=3) & (actions<= 11)) & raise_mask
-            if potsize_mask.any():
-                frac_indices=actions[potsize_mask]-3
-                fractions=self.raise_fractions[frac_indices]
-                raise_amounts[potsize_mask] = (self.pots[potsize_mask] * fractions).to(torch.int32)
+        # pot_sized fraction bets
+        potsize_mask=((actions>=3) & (actions<= 11)) & raise_mask
+        frac_indices=actions[potsize_mask]-3
+        fractions=self.raise_fractions[frac_indices]
+        raise_amounts[potsize_mask] = (self.pots[potsize_mask] * fractions).to(torch.int32)
             
-            total_needed=call_costs+raise_amounts
-            actual_bets=torch.min(total_needed[raise_mask], self.stacks[g[raise_mask], self.idx[raise_mask]])
-            is_call=actual_bets <= call_costs[raise_mask]
-            is_raise=~is_call
+        total_needed=call_costs+raise_amounts
+        actual_bets=torch.min(total_needed[raise_mask], self.stacks[g[raise_mask], self.idx[raise_mask]])
+        is_call=actual_bets <= call_costs[raise_mask]
+        is_raise=~is_call
 
-            self.stacks[g[raise_mask], self.idx[raise_mask]] -= actual_bets
-            self.current_round_bet[g[raise_mask], self.idx[raise_mask]] += actual_bets
-            self.total_invested[g[raise_mask], self.idx[raise_mask]] += actual_bets
-            self.pots[raise_mask] += actual_bets
+        self.stacks[g[raise_mask], self.idx[raise_mask]] -= actual_bets
+        self.current_round_bet[g[raise_mask], self.idx[raise_mask]] += actual_bets
+        self.total_invested[g[raise_mask], self.idx[raise_mask]] += actual_bets
+        self.pots[raise_mask] += actual_bets
 
-            self.status[g[raise_mask], self.idx[raise_mask]] = torch.where(
-                self.stacks[g[raise_mask], self.idx[raise_mask]] == 0,
-                self.ALLIN,
-                self.status[g[raise_mask], self.idx[raise_mask]]
-            ).to(torch.int32)
+        self.status[g[raise_mask], self.idx[raise_mask]] = torch.where(
+            self.stacks[g[raise_mask], self.idx[raise_mask]] == 0,
+            self.ALLIN,
+            self.status[g[raise_mask], self.idx[raise_mask]]
+        ).to(torch.int32)
 
-            raise_indices=torch.where(raise_mask)[0]
-            pure_raise_indices=raise_indices[is_raise]
-            if len(pure_raise_indices) > 0:
-                new_bets = self.current_round_bet[g[pure_raise_indices], self.idx[pure_raise_indices]]
-                self.highest[pure_raise_indices] = torch.max(self.highest[pure_raise_indices], new_bets)
-                self.agg[pure_raise_indices] = self.idx[pure_raise_indices]
-                self.acted[pure_raise_indices] = 0 # 'new round' of betting on a raise, set acted to 0
-
-            self.acted[raise_mask] += 1 # increase acted for raisers and callers
+        raise_indices=torch.where(raise_mask)[0]
+        pure_raise_indices=raise_indices[is_raise]
+        new_bets = self.current_round_bet[g[pure_raise_indices], self.idx[pure_raise_indices]]
+        self.highest[pure_raise_indices] = torch.max(self.highest[pure_raise_indices], new_bets)
+        self.agg[pure_raise_indices] = self.idx[pure_raise_indices]
+        self.acted[pure_raise_indices] = 0 # 'new round' of betting on a raise, set acted to 0
+        self.acted[raise_mask] += 1 # increase acted for raisers and callers
 
     def mask_royal_flush(self, num_show, suits, ranks):
         royal_flush_mask = torch.zeros(num_show, self.n_players, dtype=torch.bool, device=self.device)
@@ -476,23 +466,37 @@ class PokerGPU(gym.Env):
         ranks, suits = full_hands%13, full_hands//13
 
         # find hand strength masks
-        royal_flush_mask=self.mask_royal_flush(num_show, suits, ranks) & player_mask
-        straight_flush_mask, straight_flush_high_card=self.mask_straight_flush(num_show, suits, ranks, royal_flush_mask) & player_mask
-        four_of_a_kind_mask, four_kind_rank, four_kind_kicker = self.mask_four_of_a_kind(num_show, suits, ranks) & player_mask
-        full_house_mask, full_house_trips, full_house_pair = self.mask_full_house(num_show, suits, ranks, player_mask)
-        flush_mask, flush_cards = self.mask_flush(num_show, suits, ranks, player_mask, straight_flush_mask, royal_flush_mask)
+        #royal_flush_mask=self.mask_royal_flush(num_show, suits, ranks) & player_mask
+        #straight_flush_mask, straight_flush_high_card=self.mask_straight_flush(num_show, suits, ranks, royal_flush_mask) & player_mask
+        #four_of_a_kind_mask, four_kind_rank, four_kind_kicker = self.mask_four_of_a_kind(num_show, suits, ranks) & player_mask
+        #full_house_mask, full_house_trips, full_house_pair = self.mask_full_house(num_show, suits, ranks, player_mask)
+        #flush_mask, flush_cards = self.mask_flush(num_show, suits, ranks, player_mask, straight_flush_mask, royal_flush_mask)
 
-        pass
+        return terminated
+
 
     def resolve_winner_by_fold(self):
         pass
+
+    def poker_reward_gpu(self, equities, pots, investments, stack_changes, call_costs, fair_shares, actions):
+        m=.5*((equities*pots)-investments)+.5*stack_changes
+        o=call_costs/(pots+call_costs+1e-6)
+        s=torch.zeros_like(m)
+        fold_mask, call_mask, raise_mask=(actions==0), (actions==1), (actions>=2)
+
+        s[call_mask] = (equities[call_mask] - o[call_mask]) * pots[call_mask]
+        s[fold_mask] = (o[fold_mask] - equities[fold_mask]) * pots[fold_mask]
+        s[raise_mask] = equities[raise_mask] - fair_shares[raise_mask] * pots[raise_mask] * 1.2
+
+        weighted = (self.w1 * m) + (self.w2 * s)
+        r=self.n_players * torch.tanh(weighted/self.K)
 
     def step(self, actions):
         # step function to handle logic of n_games actions at once
         # get game indices ready
         g=torch.arange(self.n_games, device=self.device)
-        #prev_stacks=self.stacks[g, self.idx].clone()
-        #prev_invested=self.current_round_bet[g, self.idx].clone()
+        prev_stacks=self.stacks[g, self.idx].clone()
+        prev_invested=self.current_round_bet[g, self.idx].clone()
 
         # 1)  execute actions
         self.execute_actions(g, actions)
@@ -552,9 +556,25 @@ class PokerGPU(gym.Env):
 
         # showdown resolution, resolve winner by fold, stack change calculation for rewards
 
-        next_obs = self.get_obs()
-        rewards = torch.zeros(self.n_games, device=self.device)  # Placeholder
-        terminated = torch.ones(self.n_games, dtype=torch.bool, device=self.device)  # All False for now
+        # calculate reward
+        equities=torch.full((self.n_games, ), .5, dtype=torch.float32, device=self.device)
+        stack_changes=self.stacks[g, self.idx]-prev_stacks
+        active_counts = ((self.status == self.ACTIVE) | (self.status == self.ALLIN)).sum(dim=1).float()  # [n_games]
+        fair_shares = 1.0 / torch.clamp(active_counts, min=1.0)  # [n_games]
+        investment_this_step=prev_stacks-self.stacks[g, self.idx]
+        call_costs = torch.maximum(torch.zeros_like(self.highest), self.highest - prev_invested)  # [n_games] non-negative
+        
+        rewards = self.poker_reward_gpu(
+            equities=equities,
+            pots=self.pots,
+            investments=investment_this_step,
+            stack_changes=stack_changes,
+            call_costs=call_costs,
+            fair_shares=fair_shares,
+            actions=actions
+        )
+        
+        terminated=torch.ones(self.n_games, device=self.device, dtype=torch.bool)
         truncated = torch.zeros(self.n_games, dtype=torch.bool, device=self.device)  # All False
         info = {}
 

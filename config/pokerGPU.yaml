@@ -3,15 +3,15 @@ ENV_ID: "Pulse-Poker-GPU-v1"
 PLOT_FILENAME: ""
 SCORES_FILENAME: ""
 AGENTS:
-  - "qlearning"
-  - "heuristic"
-  - "heuristic"
-  - "heuristic"
+  - "heuristic_hands"
+  - "heuristic_hands"
+  - "heuristic_hands"
+  - "heuristic_hands"
   - "random"
   - "random"
 
 N_GAMES: 1000000
-EPISODES: 500
+EPISODES: 250
 
 STARTING_BBS: 100
 NUM_PLAYERS: 6

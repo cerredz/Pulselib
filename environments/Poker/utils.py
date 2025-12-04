@@ -78,8 +78,9 @@ def poker_reward(
 
 class PokerAgentType(enum.Enum):
     QLEARNING='qlearning'
-    HEURISTIC="heuistic"
+    HEURISTIC="heuristic"
     RANDOM='random'
+    HEURISTIC_HANDS='heuristic_hands'
 
 def load_agents(num_players: int, agent_types: list, starting_stack: int, action_space_n: int) -> list:
     # Local imports to avoid circular import with Player -> utils
@@ -121,31 +122,36 @@ def build_actions(state, curr_players, agents, agent_types, device, epsilon=0.1)
                 agent_actions = torch.where(explore_mask, random_actions, greedy_actions)
         
         # need to change to gpu
-        elif agent_type == PokerAgentType.HEURISTIC:
-            agent_actions = torch.randint(0, 13, (len(agent_states),), device=device)
+        elif agent_type == PokerAgentType.HEURISTIC_HANDS:
+            agent_actions = agents[agent_idx].action(agent_states)
         
         # need to change to gpu
         elif agent_type == PokerAgentType.RANDOM:
             agent_actions = torch.randint(0, 13, (len(agent_states),), device=device)
-        
+
         actions[game_indices] = agent_actions
-    
     return actions
 
-def load_gpu_agents(num_players: int, agent_types: list, starting_stack: int, action_space_n: int) -> list:
-    from agents.TemperalDifference.PokerQLearning import PokerQLearning
+def load_gpu_agents(device, num_players: int, agent_types: list, starting_stack: int, action_space_n: int) -> list:
     from environments.Poker.Player import HeuristicPlayer, RandomPlayer
+    from environments.Poker.Player import HeuristicHandsPlayerGPU
+    from environments.Poker.Player import PokerQNetwork
+
     players = []
     types=[]
     assert len(agent_types) == num_players
     for i, a_type in enumerate(agent_types):
         agent_type=None
+        p=None
         if a_type == 'random': 
             p = RandomPlayer(starting_stack, i)
             agent_type=PokerAgentType.RANDOM
-        else: 
-            p = HeuristicPlayer(starting_stack, i)
-            agent_type=PokerAgentType.HEURISTIC
+        elif a_type == 'heuristic_hands': 
+            p = HeuristicHandsPlayerGPU(starting_stack, i, device)
+            agent_type=PokerAgentType.HEURISTIC_HANDS
+        elif a_type == 'qlearning':
+            p=PokerQNetwork()
+            agent_type=PokerAgentType.QLEARNING
         players.append(p)
         types.append(agent_type)
     return players, types
@@ -163,3 +169,5 @@ def debug_state(st, pid, aid):
     
     print(f"Player: {pid} Action: {actions[aid]} | {stages[st[7]]} | Hand:{hand} Stack:{st[11]}BB Pos:{st[8]}\n"
           f"Board:{board} Pot:{st[9]}BB Call:{st[10]}BB | {opps}")
+
+

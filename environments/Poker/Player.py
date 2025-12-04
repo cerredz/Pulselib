@@ -69,6 +69,37 @@ class HeuristicPlayer(Player):
 
     def learn(self, episode): pass
 
+# simple heuristic player, bet solely based on its own hand strength (nothing to do with the board)
+# very simple, one of the first agents that our nn will play against
+class HeuristicHandsPlayerGPU(Player):
+    def __init__(self, starting_stack: int, player_id: int, device):        
+        super().__init__(starting_stack, player_id)
+        self.device = device
+        self.raise_distribution = torch.arange(2, 11, device=device) 
+
+    def action(self, states):
+        # get players hands
+        n_games=states.shape[0]
+        hands = states[:, 5:7]
+        ranks = hands%13
+
+        # extract ranks
+        rank1, rank2 = ranks[:, 0], ranks[:, 1]
+        actions = torch.zeros(n_games, dtype=torch.long, device=self.device)
+
+        # actions based on ranks
+        fold_mask = (rank1 < 8) & (rank2 < 8)
+        actions[fold_mask] = 0
+        pair_mask = (rank1 == rank2)
+        high_card_mask = (rank1 >= 10) | (rank2 >= 10)  # King or Ace
+        raise_mask = (pair_mask | high_card_mask) & ~fold_mask
+
+        n_raises = raise_mask.sum().item()
+        indices = torch.randint(0, 9, (n_raises,), device=self.device)
+        actions[raise_mask] = self.raise_distribution[indices]
+        return actions
+    def learn(self): pass
+
 class PokerQNetwork(nn.Module):
     def __init__(self, state_dim=27, action_dim=13, hidden_dim=256, lr=1e-4):
         super().__init__()

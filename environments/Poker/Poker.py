@@ -124,7 +124,6 @@ class Poker(gym.Env):
         )
         
         self.prev_equity = new_equity
-        
         return self._get_obs(), reward, terminated, False, {}
 
     def action_player_logic(self, action):
