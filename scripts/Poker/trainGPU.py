@@ -20,7 +20,7 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device):
     for i in range(episodes):
         state, info = env.reset()
         terminated = torch.zeros(n_games, dtype=torch.bool, device=device)
-        while terminated.float().mean() < .1:
+        while terminated.float().mean() < .9:
             curr_player_idxs = state[:, 8].long()
             actions = build_actions(state, curr_player_idxs, agents, agent_types, device)
             next_state, rewards, dones, truncated, info = env.step(actions)

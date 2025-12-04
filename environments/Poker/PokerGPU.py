@@ -472,8 +472,6 @@ class PokerGPU(gym.Env):
         #full_house_mask, full_house_trips, full_house_pair = self.mask_full_house(num_show, suits, ranks, player_mask)
         #flush_mask, flush_cards = self.mask_flush(num_show, suits, ranks, player_mask, straight_flush_mask, royal_flush_mask)
 
-        return terminated
-
 
     def resolve_winner_by_fold(self):
         pass
@@ -502,16 +500,23 @@ class PokerGPU(gym.Env):
         # 1)  execute actions
         self.execute_actions(g, actions)
 
+        truly_active = (self.status == self.ACTIVE).sum(dim=1)
+        all_allin_or_folded = (truly_active == 0)
+
         # 2) find next player to act in current round
-        active_counts=((self.status == self.ACTIVE) | (self.status == self.ALLIN)).sum(dim=1)
         next_player_idx=self.idx.clone()
         is_round_over=torch.zeros(self.n_games, dtype=torch.bool, device=self.device)
+        is_round_over[all_allin_or_folded] = True  # Round over if no one can act
+
         searching=torch.ones(self.n_games, dtype=torch.bool, device=self.device)
+        searching[all_allin_or_folded] = False  # Don't search if already over
+
         for _ in range(self.n_players):
             next_player_idx[searching]=(next_player_idx[searching]+1)%self.n_players
             # round over check
             back_to_agg=(next_player_idx==self.agg)
-            all_acted=(self.acted >= active_counts)
+            truly_active_counts = (self.status == self.ACTIVE).sum(dim=1)  # FIXED
+            all_acted=(self.acted >= truly_active_counts)
             round_over=back_to_agg & all_acted & searching
             is_round_over |= round_over
             searching[round_over]=False
@@ -520,6 +525,7 @@ class PokerGPU(gym.Env):
             player_status=self.status[g, next_player_idx]
             is_eligible=((player_status==self.ACTIVE) | (player_status==self.ALLIN)) & searching
             searching[is_eligible]=False
+
         
         no_over_mask=~is_round_over
         self.idx[no_over_mask]=next_player_idx[no_over_mask]
