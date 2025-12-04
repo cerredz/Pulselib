@@ -114,6 +114,7 @@ def build_actions(state, curr_players, agents, agent_types, device, epsilon=0.1)
         agent_states = state[mask]
         
         if agent_type == PokerAgentType.QLEARNING:
+            print("running q learning agent")
             with torch.no_grad():
                 q_values = agents[agent_idx](agent_states)
                 explore_mask = torch.rand(len(agent_states), device=device) < epsilon
@@ -149,9 +150,8 @@ def load_gpu_agents(device, num_players: int, agent_types: list, starting_stack:
         elif a_type == 'heuristic_hands': 
             p = HeuristicHandsPlayerGPU(starting_stack, i, device)
             agent_type=PokerAgentType.HEURISTIC_HANDS
-        elif a_type == 'qlearning':
-            p=PokerQNetwork()
-            agent_type=PokerAgentType.QLEARNING
+        else:
+            continue
         players.append(p)
         types.append(agent_type)
     return players, types

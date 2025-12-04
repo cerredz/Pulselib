@@ -3,7 +3,7 @@ ENV_ID: "Pulse-Poker-GPU-v1"
 PLOT_FILENAME: ""
 SCORES_FILENAME: ""
 AGENTS:
-  - "heuristic_hands"
+  - "qlearning"
   - "heuristic_hands"
   - "heuristic_hands"
   - "heuristic_hands"

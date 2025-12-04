@@ -98,12 +98,14 @@ class HeuristicHandsPlayerGPU(Player):
         indices = torch.randint(0, 9, (n_raises,), device=self.device)
         actions[raise_mask] = self.raise_distribution[indices]
         return actions
+
     def learn(self): pass
 
 class PokerQNetwork(nn.Module):
-    def __init__(self, state_dim=27, action_dim=13, hidden_dim=256, lr=1e-4):
+    def __init__(self, device, state_dim=27, action_dim=13, hidden_dim=256, lr=1e-4):
         super().__init__()
-        
+
+        self.device=device        
         # Simple feedforward network
         self.network = nn.Sequential(
             nn.Linear(state_dim, 23),
@@ -123,6 +125,7 @@ class PokerQNetwork(nn.Module):
         states: [batch_size, 27] tensor
         returns: [batch_size, 13] Q-values
         """
+        states=states.to(self.device)
         return self.network(states)
     
     def configure_optimizers(self):

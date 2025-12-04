@@ -7,15 +7,16 @@ from utils.torch import load_device
 from cProfile import Profile
 import torch
 import pstats
+import time                         
 
 CONFIG_FILENAME="pokerGPU.yaml"
 POKER_ACTION_SPACE_N=13
 
-import time                          # ← only new import
 def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device):
     g=torch.arange(n_games, device=device, dtype=torch.int32)
+    n_rewards = torch.zeros(episodes, device=device, dtype=torch.float32)
     total_steps = 0
-    start_time = time.time()         # ← start timer
+    start_time = time.time()
     
     for i in range(episodes):
         state, info = env.reset()
@@ -24,6 +25,7 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device):
             curr_player_idxs = state[:, 8].long()
             actions = build_actions(state, curr_player_idxs, agents, agent_types, device)
             next_state, rewards, dones, truncated, info = env.step(actions)
+            #n_rewards[i] = rewards.float().mean()
             state = next_state
             terminated |= dones
             total_steps += n_games
@@ -31,25 +33,25 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device):
         # ← new sprint calculation and print
         elapsed = time.time() - start_time
         steps_per_sec = total_steps / elapsed if elapsed > 0 else 0
-        if i % 1 == 0:
+        if i % 10 == 0:
             print(f"Batch {i+1}/{episodes} | Total Steps: {total_steps} | "
-                  f"Speed: {steps_per_sec:.1f} steps/sec")
+                  f"Speed: {steps_per_sec:.1f} steps/sec | Reward: {n_rewards[i]}")
 
 if __name__ == "__main__":
     config=get_config_file(file_name=CONFIG_FILENAME)
     device=load_device()
     agents, agent_types=load_gpu_agents(device, config["NUM_PLAYERS"], config["AGENTS"], config["STARTING_BBS"], POKER_ACTION_SPACE_N)
     
-    q_net=PokerQNetwork(state_dim=config["STATE_SPACE"], action_dim=config["ACTION_SPACE"])
-    target_net=PokerQNetwork(state_dim=config["STATE_SPACE"], action_dim=config["ACTION_SPACE"])
-    target_net.load_state_dict(q_net.state_dict())
+    q_net=PokerQNetwork(device=device, state_dim=config["STATE_SPACE"], action_dim=config["ACTION_SPACE"]).to(device)
+    #target_net=PokerQNetwork(state_dim=config["STATE_SPACE"], action_dim=config["ACTION_SPACE"])
+    #target_net.load_state_dict(q_net.state_dict())
 
     agents.append(q_net)
-    agents.append(target_net)
+    #agents.append(target_net)
     agent_types.append(PokerAgentType.QLEARNING)
-    agent_types.append(PokerAgentType.QLEARNING)
+    #agent_types.append(PokerAgentType.QLEARNING)
     
-    print(device)
+    print(agent_types)
 
     env=gym.make(
         config["ENV_ID"],
@@ -69,4 +71,4 @@ if __name__ == "__main__":
 
     stats = pstats.Stats(profiler)
     stats.sort_stats('cumulative')
-    stats.print_stats(20)  # Top 20 slowest calls
+    stats.print_stats(20) 
