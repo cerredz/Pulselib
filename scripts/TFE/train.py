@@ -1,7 +1,7 @@
 from agents import DQN_agent 
-from agents.DQN_agent import DQNAgent 
+#from agents.DQN_agent import DQNAgent 
 import environments 
-from environments.TwentyFourtyEight import Game2048Env 
+#from environments.TwentyFourtyEight import Game2048Env 
 from pathlib import Path 
 from typing import List 
 import gymnasium as gym

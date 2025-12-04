@@ -114,7 +114,6 @@ def build_actions(state, curr_players, agents, agent_types, device, epsilon=0.1)
         agent_states = state[mask]
         
         if agent_type == PokerAgentType.QLEARNING:
-            print("running q learning agent")
             with torch.no_grad():
                 q_values = agents[agent_idx](agent_states)
                 explore_mask = torch.rand(len(agent_states), device=device) < epsilon

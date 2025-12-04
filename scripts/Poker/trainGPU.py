@@ -1,6 +1,8 @@
 
 from environments.Poker.Player import PokerQNetwork
 from environments.Poker.utils import PokerAgentType, build_actions, load_agents, load_gpu_agents
+#from scripts.TFE.train import next_states
+from utils.ReplayBuffer import ReplayBufferTorch
 from utils.config import get_config_file
 import gymnasium as gym
 from utils.torch import load_device
@@ -12,7 +14,7 @@ import time
 CONFIG_FILENAME="pokerGPU.yaml"
 POKER_ACTION_SPACE_N=13
 
-def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device):
+def train_agent(env: gym.Env, replay_buffer, agents, agent_types, episodes, n_games, device):
     g=torch.arange(n_games, device=device, dtype=torch.int32)
     n_rewards = torch.zeros(episodes, device=device, dtype=torch.float32)
     total_steps = 0
@@ -26,6 +28,7 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device):
             actions = build_actions(state, curr_player_idxs, agents, agent_types, device)
             next_state, rewards, dones, truncated, info = env.step(actions)
             #n_rewards[i] = rewards.float().mean()
+            #replay_buffer.add(state, actions, rewards, next_state, dones)
             state = next_state
             terminated |= dones
             total_steps += n_games
@@ -41,7 +44,7 @@ if __name__ == "__main__":
     config=get_config_file(file_name=CONFIG_FILENAME)
     device=load_device()
     agents, agent_types=load_gpu_agents(device, config["NUM_PLAYERS"], config["AGENTS"], config["STARTING_BBS"], POKER_ACTION_SPACE_N)
-    
+    replay_buffer=ReplayBufferTorch(device, config["N_GAMES"], config["CAPACITY"])
     q_net=PokerQNetwork(device=device, state_dim=config["STATE_SPACE"], action_dim=config["ACTION_SPACE"]).to(device)
     #target_net=PokerQNetwork(state_dim=config["STATE_SPACE"], action_dim=config["ACTION_SPACE"])
     #target_net.load_state_dict(q_net.state_dict())
@@ -51,8 +54,6 @@ if __name__ == "__main__":
     agent_types.append(PokerAgentType.QLEARNING)
     #agent_types.append(PokerAgentType.QLEARNING)
     
-    print(agent_types)
-
     env=gym.make(
         config["ENV_ID"],
         device=device,
@@ -66,7 +67,7 @@ if __name__ == "__main__":
     )
     profiler = Profile()
     profiler.enable()
-    train_agent(env, agents, agent_types, config["EPISODES"], config["N_GAMES"], device=device)
+    train_agent(env, replay_buffer, agents, agent_types, config["EPISODES"], config["N_GAMES"], device=device)
     profiler.disable()
 
     stats = pstats.Stats(profiler)
