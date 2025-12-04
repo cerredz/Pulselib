@@ -490,6 +490,7 @@ class PokerGPU(gym.Env):
 
         weighted = (self.w1 * m) + (self.w2 * s)
         r=self.n_players * torch.tanh(weighted/self.K)
+        return r
 
     def step(self, actions):
         # step function to handle logic of n_games actions at once
@@ -574,7 +575,7 @@ class PokerGPU(gym.Env):
             actions=actions
         )
         
-        terminated=torch.ones(self.n_games, device=self.device, dtype=torch.bool)
+        #terminated=torch.ones(self.n_games, device=self.device, dtype=torch.bool)
         truncated = torch.zeros(self.n_games, dtype=torch.bool, device=self.device)  # All False
         info = {}
 
