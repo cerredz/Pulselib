@@ -5,6 +5,8 @@ import math
 from environments.Poker.utils import decode_card
 import torch
 import torch.nn as nn
+import copy
+from pathlib import Path
 
 class Player(ABC):
     """
@@ -102,10 +104,11 @@ class HeuristicHandsPlayerGPU(Player):
     def learn(self): pass
 
 class PokerQNetwork(nn.Module):
-    def __init__(self, device, state_dim=27, action_dim=13, hidden_dim=256, lr=1e-4):
+    def __init__(self, weights_path, device, gamma, update_freq:int, state_dim=27, action_dim=13, hidden_dim=256, lr=1e-4):
         super().__init__()
-
-        self.device=device        
+        self.update_freq=update_freq
+        self.device=device  
+        self.gamma=gamma      
         # Simple feedforward network
         self.network = nn.Sequential(
             nn.Linear(state_dim, 23),
@@ -117,17 +120,54 @@ class PokerQNetwork(nn.Module):
             nn.GELU(),
             nn.Linear(16, action_dim)
         )
-        
+
+        print(weights_path)
+        if Path.exists(weights_path):
+            model_weights=torch.load(weights_path, map_location=device)
+            self.network.load_state_dict(model_weights)
+
+        self.target_network=copy.deepcopy(self.network)
+        self.target_network.eval()
+
         self.lr = lr
+        self.step_count=0
+        self.optimizer = torch.optim.AdamW(self.network.parameters(), lr=lr)
+        self.criterion = nn.MSELoss()
     
     def forward(self, states):
         """
         states: [batch_size, 27] tensor
         returns: [batch_size, 13] Q-values
         """
-        states=states.to(self.device)
         return self.network(states)
     
+    def get_actions(self, states, epsilon=.1):
+        with torch.no_grad():
+            q_values = self.forward(states)
+            explore_mask = torch.rand(len(states), device=self.device) < epsilon
+            greedy_actions = q_values.argmax(dim=1)
+            random_actions = torch.randint(0, 13, (len(states),), device=self.device)
+            return torch.where(explore_mask, random_actions, greedy_actions)
+
+    def train_step(self, states, actions, rewards, next_states, dones):
+        q_values=self.forward(states)
+        q_values_for_actions = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)  # [batch]
+
+        with torch.no_grad():
+            next_q_values=self.target_network(next_states).max(dim=1).values
+            targets = rewards + self.gamma * next_q_values * (~dones).float()  # [batch]
+
+        loss=self.criterion(q_values_for_actions, targets)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        self.step_count += 1
+        if self.step_count % self.update_freq == 0:
+            self.target_network.load_state_dict(self.network.state_dict())
+
+        return loss.item()
+
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self.lr)
 

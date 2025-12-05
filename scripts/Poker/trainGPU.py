@@ -2,9 +2,9 @@
 from environments.Poker.Player import PokerQNetwork
 from environments.Poker.utils import PokerAgentType, build_actions, load_agents, load_gpu_agents
 #from scripts.TFE.train import next_states
-from utils.ReplayBuffer import ReplayBufferTorch
-from utils.config import get_config_file
+from utils.config import get_config_file, get_result_folder
 import gymnasium as gym
+from utils.plotting import plot_learning_curve
 from utils.torch import load_device
 from cProfile import Profile
 import torch
@@ -12,47 +12,76 @@ import pstats
 import time                         
 
 CONFIG_FILENAME="pokerGPU.yaml"
+PLOT_FILENAME="rewards_learning_curve"
 POKER_ACTION_SPACE_N=13
 
-def train_agent(env: gym.Env, replay_buffer, agents, agent_types, episodes, n_games, device):
+def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, results_dir):
     g=torch.arange(n_games, device=device, dtype=torch.int32)
-    n_rewards = torch.zeros(episodes, device=device, dtype=torch.float32)
     total_steps = 0
     start_time = time.time()
+
+    q_agent_idx=agent_types.index(PokerAgentType.QLEARNING)
+    q_net=torch.compile(agents[q_agent_idx])
+    
+
+    scores=[]
     
     for i in range(episodes):
         state, info = env.reset()
         terminated = torch.zeros(n_games, dtype=torch.bool, device=device)
+        episode_reward=0
         while terminated.float().mean() < .9:
             curr_player_idxs = state[:, 8].long()
             actions = build_actions(state, curr_player_idxs, agents, agent_types, device)
             next_state, rewards, dones, truncated, info = env.step(actions)
-            #n_rewards[i] = rewards.float().mean()
+            q_mask = (curr_player_idxs == q_agent_idx)
+            if q_mask.any():
+                loss = q_net.train_step(
+                    states=state[q_mask],
+                    actions=actions[q_mask],
+                    rewards=rewards[q_mask],
+                    next_states=next_state[q_mask],
+                    dones=dones[q_mask]
+                )
+            episode_reward += rewards[q_mask].sum().item() if q_mask.any() else 0
             #replay_buffer.add(state, actions, rewards, next_state, dones)
             state = next_state
             terminated |= dones
             total_steps += n_games
 
+        scores.append(episode_reward)
+
         # ← new sprint calculation and print
         elapsed = time.time() - start_time
         steps_per_sec = total_steps / elapsed if elapsed > 0 else 0
-        if i % 10 == 0:
-            print(f"Batch {i+1}/{episodes} | Total Steps: {total_steps} | "
-                  f"Speed: {steps_per_sec:.1f} steps/sec | Reward: {n_rewards[i]}")
+        if (i + 1) % 10 == 0:
+            elapsed = time.time() - start_time
+            steps_per_sec = total_steps / elapsed if elapsed > 0 else 0
+            print(f"Episode {i+1:5d}/{episodes} | "
+                f"Reward: {episode_reward:8.2f} | "
+                f"Speed: {steps_per_sec:6.1f} steps/sec")
+
+    torch.save(q_net.network.state_dict(), f"{results_dir}/poker_qnet_final.pth")
+    
+    plot_path=results_dir/PLOT_FILENAME
+    plot_learning_curve(
+        scores=scores, 
+        file_path=str(plot_path), 
+        window_size=10, 
+        title="Poker Q-Learning – Total Reward per Episode Batch"
+    )
 
 if __name__ == "__main__":
     config=get_config_file(file_name=CONFIG_FILENAME)
+    result_dir=get_result_folder(config["RESULTS_DIR"])
+    q_learning_model_weights=result_dir/"poker_qnet_final.pth"
+
     device=load_device()
     agents, agent_types=load_gpu_agents(device, config["NUM_PLAYERS"], config["AGENTS"], config["STARTING_BBS"], POKER_ACTION_SPACE_N)
-    replay_buffer=ReplayBufferTorch(device, config["N_GAMES"], config["CAPACITY"])
-    q_net=PokerQNetwork(device=device, state_dim=config["STATE_SPACE"], action_dim=config["ACTION_SPACE"]).to(device)
-    #target_net=PokerQNetwork(state_dim=config["STATE_SPACE"], action_dim=config["ACTION_SPACE"])
-    #target_net.load_state_dict(q_net.state_dict())
+    q_net=PokerQNetwork(weights_path=q_learning_model_weights, device=device, gamma=config["GAMMA"], update_freq=config["UPDATE_FREQ"], state_dim=config["STATE_SPACE"], action_dim=config["ACTION_SPACE"]).to(device)
 
     agents.append(q_net)
-    #agents.append(target_net)
     agent_types.append(PokerAgentType.QLEARNING)
-    #agent_types.append(PokerAgentType.QLEARNING)
     
     env=gym.make(
         config["ENV_ID"],
@@ -67,7 +96,7 @@ if __name__ == "__main__":
     )
     profiler = Profile()
     profiler.enable()
-    train_agent(env, replay_buffer, agents, agent_types, config["EPISODES"], config["N_GAMES"], device=device)
+    train_agent(env, agents, agent_types, config["EPISODES"], config["N_GAMES"], device=device, results_dir=result_dir)
     profiler.disable()
 
     stats = pstats.Stats(profiler)

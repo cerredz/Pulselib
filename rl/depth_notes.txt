@@ -268,3 +268,11 @@ Implementing a poker enviornment first ideas:
                 - each game should realistically only be at most 50-75 steps 
         - experiement with moving the raise_amounts tensor outside of the actions function and into the 
             reset function
+
+    - fuck it, switching to neural nets for value function approximation
+        - trying to grow a q-table on gpu is going to be very hard, alot of time, and quite honestly
+            prob going to be way too much memory anyways in the end
+        - going to built nn to approxiate q-values
+        - going to start off nn small, might built different versions of it later
+            - going to save instance of different nns and maybe play them later on
+        - 

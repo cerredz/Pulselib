@@ -587,10 +587,3 @@ class PokerGPU(gym.Env):
 
         return self.get_obs(), rewards, terminated, truncated, info
 
-
-
-
-            
-
-        
-    
