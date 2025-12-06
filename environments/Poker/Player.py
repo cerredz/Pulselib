@@ -114,7 +114,7 @@ class TightAggressivePlayerGPU(Player):
         hands = states[:, 5:7].long()
         ranks = hands%13
         rank1, rank2 = ranks[:, 0], ranks[:, 1]
-        actions = torch.zeros(n_games, dtype=torch.long, device=self.device)
+        actions = torch.ones(n_games, dtype=torch.long, device=self.device)
         fold_mask=(rank1 < 7) & (rank2 < 7) & (torch.abs(rank1-rank2) > 5)
         actions[fold_mask]=0
         pair_mask=(rank1==rank2)
@@ -135,7 +135,7 @@ class LoosePassivePlayerGPU(Player):
 
     def action(self, states):
         n_games=states.shape[0]
-        hands = states[:, 5:7]
+        hands = states[:, 5:7].long()
         ranks = hands%13
         rank1, rank2 = ranks[:, 0], ranks[:, 1]
         actions = torch.zeros(n_games, dtype=torch.long, device=self.device)
@@ -151,6 +151,8 @@ class LoosePassivePlayerGPU(Player):
         indices = torch.randint(0, 4, (n_raises,), device=self.device)        
         actions[raise_mask]=self.raise_distribution[indices]
         return actions
+
+    def learn(self): pass
 
 class SmallBallPlayerGPU(Player):
     def __init__(self, starting_stack: int, player_id: int, device):        
@@ -185,18 +187,17 @@ class PokerQNetwork(nn.Module):
         self.gamma=gamma      
         # Simple feedforward network
         self.network = nn.Sequential(
-            nn.Linear(state_dim, 23),
+            nn.Linear(state_dim, 32),
             nn.GELU(),
-            nn.Linear(23, 19),
+            nn.Linear(32, 24),
             nn.GELU(),
             nn.Dropout(),
-            nn.Linear(19, 16),
+            nn.Linear(24, 18),
             nn.GELU(),
-            nn.Linear(16, action_dim)
+            nn.Linear(18, action_dim)
         )
 
-        print(weights_path)
-        if Path.exists(weights_path):
+        if Path(weights_path).exists():
             model_weights=torch.load(weights_path, map_location=device)
             self.network.load_state_dict(model_weights)
 
@@ -210,7 +211,7 @@ class PokerQNetwork(nn.Module):
     
     def forward(self, states):
         """
-        states: [batch_size, 27] tensor
+        states: [batch_size, 39] tensor
         returns: [batch_size, 13] Q-values
         """
         return self.network(states)

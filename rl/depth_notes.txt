@@ -277,6 +277,9 @@ Implementing a poker enviornment first ideas:
             - going to save instance of different nns and maybe play them later on
         - 
 
+    - pytorch notes:
+        - 
+
     - everything is now hooked up and the main bottleneck is goind to be training time, however in the meantime, what are a list of decisions that we can implement that is going to improve our model:
         - 1) need to actually implement equity calculation, right now our model is basically only learning the "pot odds" part of the reward function
         - 2) make the qlearning network deeper and larger, right now pretty small, wanted to start off like this, but should prob make it bigger
@@ -294,3 +297,5 @@ Implementing a poker enviornment first ideas:
                 - will increase state space a little bit, but is going to enable us to train against multiple lengthed opponents
                 - have to cut/append opponent length while training
                     - add different players into each slot as well
+        
+        - explore pots bug, explore resolve fold winners, explore active players

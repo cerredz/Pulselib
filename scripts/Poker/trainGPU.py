@@ -24,13 +24,13 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
     scores=[]
     
     for episode in range(episodes):
-        q_seat = episode % env.n_players
-        rotation = (q_seat - q_agent_idx) % env.n_players
+        q_seat = episode % 7
+        rotation = (q_seat - q_agent_idx) % 7
 
         rotated_agents = agents[-rotation:] + agents[:-rotation] if rotation else agents.copy()
         rotated_types = agent_types[-rotation:] + agent_types[:-rotation] if rotation else agent_types.copy()
 
-        state, info = env.reset(rotation=rotation)
+        state, info = env.reset(options={'rotation': rotation, 'active_players': True})
         terminated = torch.zeros(n_games, dtype=torch.bool, device=device)
         episode_reward=0
         
@@ -38,7 +38,10 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
             curr_player_idxs = state[:, 8].long()
             actions = build_actions(state, curr_player_idxs, rotated_agents, rotated_types, device)
             next_state, rewards, dones, truncated, info = env.step(actions)
-            q_mask = (curr_player_idxs == q_agent_idx)
+            #q_mask = (curr_player_idxs == q_seat[0:info["active_players"]])
+            q_mask = (curr_player_idxs == q_seat)
+
+
             if q_mask.any():
                 loss = q_net.train_step(
                     states=state[q_mask],
@@ -89,7 +92,7 @@ if __name__ == "__main__":
         config["ENV_ID"],
         device=device,
         agents=agents, 
-        n_players=config["NUM_PLAYERS"],
+        n_players=config["NUM_PLAYERS"]+1, # account for the manually added q-net
         n_games=config["N_GAMES"], 
         starting_bbs=config["STARTING_BBS"], 
         w1=config["W1"],

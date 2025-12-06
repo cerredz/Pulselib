@@ -1,7 +1,6 @@
 # utility functions for our poker environment
 import math
 import enum
-from environments.Poker.Player import LoosePassivePlayerGPU, SmallBallPlayerGPU, TightAggressivePlayerGPU
 import eval7
 import torch
 import torch.optim as optim
@@ -99,15 +98,6 @@ def load_agents(num_players: int, agent_types: list, starting_stack: int, action
         if a_type == 'random': 
             p = RandomPlayer(starting_stack, i)
             agent_type=PokerAgentType.RANDOM
-        elif a_type=="tight_aggresive":
-            p=TightAggressivePlayerGPU(starting_stack, i)
-            agent_type=PokerAgentType.TIGHT_AGGRESSIVE
-        elif a_type == "loose_passive":
-            p=LoosePassivePlayerGPU(starting_stack, i)
-            agent_type=PokerAgentType.LOOSE_PASSIVE
-        elif a_type=="small_ball":
-            p=SmallBallPlayerGPU(starting_stack, i)
-            agent_type=PokerAgentType.SMALL_BALL
         else:
             p = HeuristicPlayer(starting_stack, i)
             agent_type=PokerAgentType.HEURISTIC
@@ -143,6 +133,7 @@ def load_gpu_agents(device, num_players: int, agent_types: list, starting_stack:
     from environments.Poker.Player import HeuristicPlayer, RandomPlayer
     from environments.Poker.Player import HeuristicHandsPlayerGPU
     from environments.Poker.Player import PokerQNetwork
+    from environments.Poker.Player import LoosePassivePlayerGPU, SmallBallPlayerGPU, TightAggressivePlayerGPU
 
     players = []
     types=[]
@@ -152,12 +143,22 @@ def load_gpu_agents(device, num_players: int, agent_types: list, starting_stack:
         p=None
         if a_type == 'random': 
             p = RandomPlayer(starting_stack, i)
-            agent_type=PokerAgentType.RANDOM
+            agent_type = PokerAgentType.RANDOM
         elif a_type == 'heuristic_hands': 
             p = HeuristicHandsPlayerGPU(starting_stack, i, device)
-            agent_type=PokerAgentType.HEURISTIC_HANDS
+            agent_type = PokerAgentType.HEURISTIC_HANDS
+        elif a_type == 'tight_aggressive':
+            p = TightAggressivePlayerGPU(starting_stack, i, device)
+            agent_type = PokerAgentType.TIGHT_AGGRESSIVE
+        elif a_type == 'loose_passive':
+            p = LoosePassivePlayerGPU(starting_stack, i, device)
+            agent_type = PokerAgentType.LOOSE_PASSIVE
+        elif a_type == 'small_ball':
+            p = SmallBallPlayerGPU(starting_stack, i, device)
+            agent_type = PokerAgentType.SMALL_BALL
         else:
-            continue
+            raise ValueError(f"Unknown agent type: {a_type}")
+
         players.append(p)
         types.append(agent_type)
     return players, types
