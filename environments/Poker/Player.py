@@ -103,6 +103,55 @@ class HeuristicHandsPlayerGPU(Player):
 
     def learn(self): pass
 
+class TightAggressivePlayerGPU(Player):
+    def __init__(self, starting_stack: int, player_id: int, device):        
+        super().__init__(starting_stack, player_id)
+        self.device = device
+        self.raise_distribution = torch.arange(2, 11, device=device) 
+
+    def action(self, states):
+        n_games=states.shape[0]
+        hands = states[:, 5:7]
+        ranks = hands%13
+        rank1, rank2 = ranks[:, 0], ranks[:, 1]
+        actions = torch.zeros(n_games, dtype=torch.long, device=self.device)
+        fold_mask=(rank1 < 7) & (rank2 < 7) & (torch.abs(rank1-rank2) > 5)
+        actions[fold_mask]=0
+        pair_mask=(rank1==rank2)
+        high_card_mask = ((rank1 >= 10) & (rank2 > 5)) | ((rank2 >= 10) & (rank1 > 5))        
+        raise_mask=(pair_mask | high_card_mask) & ~fold_mask
+        n_raises=raise_mask.sum().item()
+        indices=torch.randint(5, 9, (n_raises,), device=self.device)
+        actions[raise_mask]=self.raise_distribution[indices]
+        return actions
+
+    def learn(self): pass
+
+class LoosePassivePlayerGPU(Player):
+    def __init__(self, starting_stack: int, player_id: int, device):        
+        super().__init__(starting_stack, player_id)
+        self.device = device
+        self.raise_distribution = torch.arange(2, 11, device=device) 
+
+    def action(self, states):
+        n_games=states.shape[0]
+        hands = states[:, 5:7]
+        ranks = hands%13
+        rank1, rank2 = ranks[:, 0], ranks[:, 1]
+        actions = torch.zeros(n_games, dtype=torch.float32, device=self.device)
+        probs=torch.rand(n_games, dtype=torch.long, device=self.device)
+        fold_mask=(rank1 <= 4) & (rank2 <= 4) & (torch.abs(rank1-rank2) > 9)
+        actions[fold_mask]=0
+        pair_mask = (rank1 == rank2) & (rank1>8)
+        high_card_mask = ((rank1 >= 11) & (rank2 > 9)) | ((rank2 >= 11) & (rank1 > 9)) 
+        call_mask=(pair_mask | high_card_mask) & ~fold_mask
+        raise_mask=(probs>.9) & call_mask
+        n_raises = raise_mask.sum().item()
+        actions[call_mask]=1
+        indices = torch.randint(0, 4, (n_raises,), device=self.device)        
+        actions[raise_mask]=self.raise_distribution[indices]
+        return actions
+
 class PokerQNetwork(nn.Module):
     def __init__(self, weights_path, device, gamma, update_freq:int, state_dim=27, action_dim=13, hidden_dim=256, lr=1e-4):
         super().__init__()

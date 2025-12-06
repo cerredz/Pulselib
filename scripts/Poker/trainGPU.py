@@ -21,9 +21,6 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
     start_time = time.time()
 
     q_agent_idx=agent_types.index(PokerAgentType.QLEARNING)
-    q_net=torch.compile(agents[q_agent_idx])
-    
-
     scores=[]
     
     for i in range(episodes):

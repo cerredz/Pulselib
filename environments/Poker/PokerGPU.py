@@ -32,6 +32,9 @@ class PokerGPU(gym.Env):
         # Initialize state tensors as None (will be set in reset)
         self.stacks = None
 
+    def set_agents(self, agents):
+        self.agents=agents
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         
@@ -525,7 +528,6 @@ class PokerGPU(gym.Env):
             player_status=self.status[g, next_player_idx]
             is_eligible=((player_status==self.ACTIVE) | (player_status==self.ALLIN)) & searching
             searching[is_eligible]=False
-
         
         no_over_mask=~is_round_over
         self.idx[no_over_mask]=next_player_idx[no_over_mask]

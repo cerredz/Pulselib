@@ -1,6 +1,7 @@
 # utility functions for our poker environment
 import math
 import enum
+from environments.Poker.Player import LoosePassivePlayerGPU, TightAggressivePlayerGPU
 import eval7
 import torch
 import torch.optim as optim
@@ -82,6 +83,8 @@ class PokerAgentType(enum.Enum):
     HEURISTIC="heuristic"
     RANDOM='random'
     HEURISTIC_HANDS='heuristic_hands'
+    TIGHT_AGGRESSIVE="tight_aggressive"
+    LOOSE_PASSIVE="loose_passive"
 
 def load_agents(num_players: int, agent_types: list, starting_stack: int, action_space_n: int) -> list:
     # Local imports to avoid circular import with Player -> utils
@@ -95,7 +98,13 @@ def load_agents(num_players: int, agent_types: list, starting_stack: int, action
         if a_type == 'random': 
             p = RandomPlayer(starting_stack, i)
             agent_type=PokerAgentType.RANDOM
-        else: 
+        elif a_type=="tight_aggresive":
+            p=TightAggressivePlayerGPU(starting_stack, i)
+            agent_type=PokerAgentType.TIGHT_AGGRESSIVE
+        elif a_type == "loose_passive":
+            p=LoosePassivePlayerGPU(starting_stack, i)
+            agent_type=PokerAgentType.LOOSE_PASSIVE
+        else:
             p = HeuristicPlayer(starting_stack, i)
             agent_type=PokerAgentType.HEURISTIC
         players.append(p)
@@ -117,13 +126,13 @@ def build_actions(state, curr_players, agents, agent_types, device, epsilon=0.1)
         if agent_type == PokerAgentType.QLEARNING:
             agent_actions=agents[agent_idx].get_actions(agent_states)
         # need to change to gpu
-        elif agent_type == PokerAgentType.HEURISTIC_HANDS:
-            agent_actions = agents[agent_idx].action(agent_states)
-        # need to change to gpu
         elif agent_type == PokerAgentType.RANDOM:
             agent_actions = torch.randint(0, 13, (len(agent_states),), device=device)
-
+        # heuristic players that we created
+        else:
+            agent_actions = agents[agent_idx].action(agent_states)
         actions[game_indices] = agent_actions
+
     return actions
 
 def load_gpu_agents(device, num_players: int, agent_types: list, starting_stack: int, action_space_n: int) -> list:
