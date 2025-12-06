@@ -111,7 +111,7 @@ class TightAggressivePlayerGPU(Player):
 
     def action(self, states):
         n_games=states.shape[0]
-        hands = states[:, 5:7]
+        hands = states[:, 5:7].long()
         ranks = hands%13
         rank1, rank2 = ranks[:, 0], ranks[:, 1]
         actions = torch.zeros(n_games, dtype=torch.long, device=self.device)
@@ -138,8 +138,8 @@ class LoosePassivePlayerGPU(Player):
         hands = states[:, 5:7]
         ranks = hands%13
         rank1, rank2 = ranks[:, 0], ranks[:, 1]
-        actions = torch.zeros(n_games, dtype=torch.float32, device=self.device)
-        probs=torch.rand(n_games, dtype=torch.long, device=self.device)
+        actions = torch.zeros(n_games, dtype=torch.long, device=self.device)
+        probs=torch.rand(n_games, device=self.device)
         fold_mask=(rank1 <= 4) & (rank2 <= 4) & (torch.abs(rank1-rank2) > 9)
         actions[fold_mask]=0
         pair_mask = (rank1 == rank2) & (rank1>8)
@@ -160,11 +160,11 @@ class SmallBallPlayerGPU(Player):
 
     def action(self, states):
         n_games=states.shape[0]
-        hands = states[:, 5:7]
+        hands = states[:, 5:7].long()
         pot_size=states[:, 9]
         ranks = hands%13
         rank1, rank2 = ranks[:, 0], ranks[:, 1]
-        actions = torch.zeros(n_games, dtype=torch.float32, device=self.device)
+        actions = torch.zeros(n_games, dtype=torch.long, device=self.device)
         fold_mask = ((rank1 < 6) & (rank2 < 6) & (pot_size > 30)) | \
                     ((rank1 < 9) & (rank2 < 9) & (pot_size > 80)) 
         actions[fold_mask]=0
@@ -173,8 +173,8 @@ class SmallBallPlayerGPU(Player):
         high_card_mask = ((rank1 >= 10) & (rank2 > 5)) | ((rank2 >= 10) & (rank1 > 5)) 
         raise_mask=(pair_mask | high_card_mask) & ~fold_mask
         n_raises = raise_mask.sum().item()
-        indicies=torch.randint(0, 3, (n_raises), device=self.device, dtype=torch.int32)
-        actions[raise_mask]=self.raise_distribution[indicies]
+        indices=torch.randint(0, 3, (n_raises), device=self.device, dtype=torch.int32)
+        actions[raise_mask]=self.raise_distribution[indices]
         return actions
 
 class PokerQNetwork(nn.Module):

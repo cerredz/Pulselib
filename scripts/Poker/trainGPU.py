@@ -23,13 +23,20 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
     q_agent_idx=agent_types.index(PokerAgentType.QLEARNING)
     scores=[]
     
-    for i in range(episodes):
-        state, info = env.reset()
+    for episode in range(episodes):
+        q_seat = episode % env.n_players
+        rotation = (q_seat - q_agent_idx) % env.n_players
+
+        rotated_agents = agents[-rotation:] + agents[:-rotation] if rotation else agents.copy()
+        rotated_types = agent_types[-rotation:] + agent_types[:-rotation] if rotation else agent_types.copy()
+
+        state, info = env.reset(rotation=rotation)
         terminated = torch.zeros(n_games, dtype=torch.bool, device=device)
         episode_reward=0
+        
         while terminated.float().mean() < .9:
             curr_player_idxs = state[:, 8].long()
-            actions = build_actions(state, curr_player_idxs, agents, agent_types, device)
+            actions = build_actions(state, curr_player_idxs, rotated_agents, rotated_types, device)
             next_state, rewards, dones, truncated, info = env.step(actions)
             q_mask = (curr_player_idxs == q_agent_idx)
             if q_mask.any():
@@ -47,14 +54,12 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
             total_steps += n_games
 
         scores.append(episode_reward)
-
-        # ← new sprint calculation and print
         elapsed = time.time() - start_time
         steps_per_sec = total_steps / elapsed if elapsed > 0 else 0
-        if (i + 1) % 10 == 0:
+        if (episode + 1) % 10 == 0:
             elapsed = time.time() - start_time
             steps_per_sec = total_steps / elapsed if elapsed > 0 else 0
-            print(f"Episode {i+1:5d}/{episodes} | "
+            print(f"Episode {episode+1:5d}/{episodes} | "
                 f"Reward: {episode_reward:8.2f} | "
                 f"Speed: {steps_per_sec:6.1f} steps/sec")
 

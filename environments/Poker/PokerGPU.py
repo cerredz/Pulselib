@@ -35,7 +35,7 @@ class PokerGPU(gym.Env):
     def set_agents(self, agents):
         self.agents=agents
 
-    def reset(self, seed=None, options=None):
+    def reset(self, seed=None, options=None, rotations=0):
         super().reset(seed=seed)
         
         # game state tensors
@@ -55,6 +55,8 @@ class PokerGPU(gym.Env):
             above_max = (self.stacks > self.max_bbs)
             self.stacks[busted] = self.starting_bbs
             self.stacks[above_max] = self.starting_bbs
+            if rotations != 0:
+                self.stacks = torch.roll(self.stacks, rotations, dims=1)
         
         self.hands = self.deal_players_cards(self.n_players * 2).view(self.n_games, self.n_players, 2)
 

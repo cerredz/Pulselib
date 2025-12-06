@@ -1,7 +1,7 @@
 # utility functions for our poker environment
 import math
 import enum
-from environments.Poker.Player import LoosePassivePlayerGPU, TightAggressivePlayerGPU
+from environments.Poker.Player import LoosePassivePlayerGPU, SmallBallPlayerGPU, TightAggressivePlayerGPU
 import eval7
 import torch
 import torch.optim as optim
@@ -85,6 +85,7 @@ class PokerAgentType(enum.Enum):
     HEURISTIC_HANDS='heuristic_hands'
     TIGHT_AGGRESSIVE="tight_aggressive"
     LOOSE_PASSIVE="loose_passive"
+    SMALL_BALL="small_ball"
 
 def load_agents(num_players: int, agent_types: list, starting_stack: int, action_space_n: int) -> list:
     # Local imports to avoid circular import with Player -> utils
@@ -104,6 +105,9 @@ def load_agents(num_players: int, agent_types: list, starting_stack: int, action
         elif a_type == "loose_passive":
             p=LoosePassivePlayerGPU(starting_stack, i)
             agent_type=PokerAgentType.LOOSE_PASSIVE
+        elif a_type=="small_ball":
+            p=SmallBallPlayerGPU(starting_stack, i)
+            agent_type=PokerAgentType.SMALL_BALL
         else:
             p = HeuristicPlayer(starting_stack, i)
             agent_type=PokerAgentType.HEURISTIC
@@ -171,5 +175,4 @@ def debug_state(st, pid, aid):
     
     print(f"Player: {pid} Action: {actions[aid]} | {stages[st[7]]} | Hand:{hand} Stack:{st[11]}BB Pos:{st[8]}\n"
           f"Board:{board} Pot:{st[9]}BB Call:{st[10]}BB | {opps}")
-
 
