@@ -41,7 +41,6 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
             #q_mask = (curr_player_idxs == q_seat[0:info["active_players"]])
             q_mask = (curr_player_idxs == q_seat)
 
-
             if q_mask.any():
                 loss = q_net.train_step(
                     states=state[q_mask],

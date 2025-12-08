@@ -38,7 +38,7 @@ class PokerGPU(gym.Env):
 
     def reset(self, seed=None, options=None, rotation=0):
         super().reset(seed=seed)
-        if options['active_players']:
+        if options and options['active_players']:
             self.active_players=torch.randint(2, self.n_players+1, (1,), device=self.device).item()
         else: self.active_players=self.n_players
 
@@ -59,10 +59,13 @@ class PokerGPU(gym.Env):
             above_max = (self.stacks > self.max_bbs)
             self.stacks[busted] = self.starting_bbs
             self.stacks[above_max] = self.starting_bbs
-            if options['rotation'] != 0:
+            if options and options['rotation'] != 0:
                 self.stacks = torch.roll(self.stacks, rotation, dims=1)
         
-        self.hands = self.deal_players_cards(self.n_players * 2).view(self.n_games, self.n_players, 2)
+        all_cards = self.deal_players_cards(self.active_players * 2)
+        self.hands = torch.full((self.n_games, self.n_players, 2), -1, dtype=torch.int32, device=self.device)
+        self.hands[:, :self.active_players] = all_cards.view(self.n_games, self.active_players, 2)
+
         self.current_round_bet = torch.zeros((self.n_games, self.n_players), dtype=torch.int32, device=self.device)
         self.total_invested = torch.zeros((self.n_games, self.n_players), dtype=torch.int32, device=self.device)
         self.status = torch.full((self.n_games, self.n_players), self.ACTIVE, dtype=torch.int32, device=self.device)
@@ -79,7 +82,6 @@ class PokerGPU(gym.Env):
         self.agg = self.bb.clone()
         self.acted = torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
         self.is_done = torch.zeros(self.n_games, dtype=torch.bool, device=self.device)
-
         return self.get_obs(), self.get_info()
 
     def get_obs(self):
@@ -94,11 +96,9 @@ class PokerGPU(gym.Env):
             self.stacks[g, self.idx].unsqueeze(1)  # [n_games, 1]
         ]
         
-        players=0
         for i in range(1, self.max_players):
-            opp = (self.idx + i) % self.active_players
-            players += 1
-            if players < self.active_players:
+            if i < self.active_players:
+                opp = (self.idx + i) % self.active_players
                 obs_parts.extend([
                     self.stacks[g, opp].unsqueeze(1),
                     (self.status[g, opp] == self.ACTIVE).float().unsqueeze(1),
@@ -258,16 +258,17 @@ class PokerGPU(gym.Env):
         r=self.n_players * torch.tanh(weighted/self.K)
         return r
 
-    def resolve_fold_winners(self, g, terminated):
+    def resolve_fold_winners(self, g):
         # recieves the mask of the terminated games, for these games we are going to 
         # calculate the winners of the pot and add to their stack
-        won_by_fold=((((self.status == self.ACTIVE) | (self.status == self.ALLIN)).sum(dim=1) == 1) & terminated)
-        winner_pots=self.pots[won_by_fold]
+        ended=self.is_done[g]
+        won=((self.status[g]==self.ACTIVE) | (self.status[g] == self.ALLIN)).sum(dim=1) == 1
+        gg=g[ended & won]
+        if gg.any():
+            survivor=((self.status[gg] == self.ACTIVE) | (self.status[gg] == self.ALLIN)).long().argmax(dim=1)
+            self.stacks[gg, survivor] += self.pots[gg]
+            self.pots[gg]=0
 
-        self.stacks[won_by_fold] += winner_pots.unsqueeze(1)
-        self.status[won_by_fold]=self.FOLDED # set to folded so we dont give them the pot twice
-        self.pots[won_by_fold]=0
-        
     def step(self, actions):
         # step function to handle logic of n_games actions at once
         # get game indices ready
@@ -278,17 +279,20 @@ class PokerGPU(gym.Env):
         # 1)  execute actions
         self.execute_actions(g, actions)
 
-        truly_active = ((self.status == self.ACTIVE) & (self.status != self.SITOUT)).sum(dim=1)
+        truly_active = ((self.status == self.ACTIVE)).sum(dim=1)
         all_allin_or_folded = (truly_active == 0)
 
         # 2) find next player to act in current round
+        
         next_player_idx=self.idx.clone()
         is_round_over=torch.zeros(self.n_games, dtype=torch.bool, device=self.device)
         is_round_over[all_allin_or_folded] = True  # Round over if no one can act
 
+        searching=~is_round_over
         searching=torch.ones(self.n_games, dtype=torch.bool, device=self.device)
         searching[all_allin_or_folded] = False  # Don't search if already over
 
+        # NOTE: need way to parallelize the below code, eliminate this ugly for loop
         for _ in range(self.active_players):
             next_player_idx[searching]=(next_player_idx[searching]+1)%self.active_players
             # round over check
@@ -303,10 +307,34 @@ class PokerGPU(gym.Env):
             player_status=self.status[g, next_player_idx]
             is_eligible=((player_status==self.ACTIVE) | (player_status==self.ALLIN)) & searching
             searching[is_eligible]=False
-        
+
         no_over_mask=~is_round_over
         self.idx[no_over_mask]=next_player_idx[no_over_mask]
+    
+        # find the next players in each round
+        """
+        offsets=torch.arange(1, self.active_players+1, dtype=torch.int32, device=self.device)
+        candidates=(next_player_idx.unsqueeze(1)+offsets)%self.active_players  
+        candidates_status=self.status[g.unsqueeze(1), candidates]
+        is_eligible=(candidates_status==self.ACTIVE) | (candidates_status == self.ALLIN)
+        has_eligible=is_eligible.any(dim=1)
+        first_eligible_idx = torch.where(
+            has_eligible,
+            is_eligible.float().argmax(dim=1),
+            torch.zeros_like(next_player_idx)
+        )
+        next_player=candidates[g, first_eligible_idx]
 
+        back_to_agg = (next_player == self.agg)
+        truly_active_counts = (self.status == self.ACTIVE).sum(dim=1)
+        all_acted = (self.acted >= truly_active_counts)
+        round_over_now = ((back_to_agg & all_acted) | ~has_eligible) & searching
+        is_round_over |= round_over_now
+        should_update = searching & has_eligible & ~round_over_now
+        next_player_idx = torch.where(should_update, next_player, next_player_idx)
+        no_over_mask = ~is_round_over
+        self.idx[no_over_mask] = next_player_idx[no_over_mask]
+        """
         # 3) handle round transitions & game ends
         terminated = torch.zeros(self.n_games, dtype=torch.bool, device=self.device)
         stack_changes = torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
@@ -319,7 +347,7 @@ class PokerGPU(gym.Env):
             g_over=g[transition_mask]
             self.stages[transition_mask]+=1
             self.highest[transition_mask] = 0
-            self.agg[transition_mask] = (self.button[transition_mask] + 1) % self.n_players
+            self.agg[transition_mask] = (self.button[transition_mask] + 1) % self.active_players
             self.acted[transition_mask] = 0
             self.current_round_bet[g_over, :]=0
 
@@ -339,7 +367,8 @@ class PokerGPU(gym.Env):
                     self.board[street_games, start_col:start_col+n_cards]=cards
 
         # showdown resolution, resolve winner by fold, stack change calculation for rewards
-        self.resolve_fold_winners(g=g, terminated=terminated)
+        self.is_done=terminated.clone()
+        self.resolve_fold_winners(g)
 
         # calculate reward
         equities=torch.full((self.n_games, ), .5, dtype=torch.float32, device=self.device)
