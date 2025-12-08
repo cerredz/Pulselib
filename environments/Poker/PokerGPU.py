@@ -269,6 +269,11 @@ class PokerGPU(gym.Env):
             self.stacks[gg, survivor] += self.pots[gg]
             self.pots[gg]=0
 
+    def calculate_equities(self):
+        equities=torch.zeros((self.n_games, self.active_players), device=self.device, dtype=torch.int32)
+        preflop, flop, turn, river = (self.stages == 0), (self.stages == 1), (self.stages == 2), (self.stages == 3)
+
+
     def step(self, actions):
         # step function to handle logic of n_games actions at once
         # get game indices ready
@@ -371,7 +376,11 @@ class PokerGPU(gym.Env):
         self.resolve_fold_winners(g)
 
         # calculate reward
-        equities=torch.full((self.n_games, ), .5, dtype=torch.float32, device=self.device)
+        # equities=torch.full((self.n_games, ), .5, dtype=torch.float32, device=self.device)
+        # for equity calculation, we will be using (for right now) a 7-card lookup table 
+            # takes into account a players hand and the board
+        equities=self.calculate_equities()
+
         stack_changes=self.stacks[g, self.idx]-prev_stacks
         active_counts = ((self.status == self.ACTIVE) | (self.status == self.ALLIN)).sum(dim=1).float()  # [n_games]
         fair_shares = 1.0 / torch.clamp(active_counts, min=1.0)  # [n_games]

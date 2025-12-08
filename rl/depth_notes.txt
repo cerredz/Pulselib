@@ -300,4 +300,28 @@ Implementing a poker enviornment first ideas:
         
         - explore pots bug, explore resolve fold winners, explore active players
 
+
+
+    - equity caluclation solved (for now using 5-6-7 card evaluators):
+        - preflop and river we use precomputed tables
+        - turn we use a 1-step lookahead table:
+            - there are 40-45 cards left in the deck, just simulate each one of these cards on the river and calculate the 
+                equity from these precomputed tables there
+        - post flop, do same as above (this will not be as accurate since we cannot see the river)
+    
+    - i noticed that we are not perfectly calculating the equity at each stage, originally, I had thought that this
+        would be a simple alg at each stage of the game with 100% accuracy
+            - it is actually very computational and even then not 100% (just simulates a large amount of games)
+         - this could end up fucking us, as the equity calculation is apart of the reward function, it needs to be accurate
+            - note: the equity calc is extremely accurate for the current player (doesnt take into account other players)
+                this in theory could still take us VERY FAR and have a VERY ADVANCED BOT
+        
+        - ideally, we would want to calculate equities with 100% accuracy, blazingly fast, and using 
+            ALL players card info (not just 100% accuracy with current players hand)
+            - unfortunately, i just dont think that this is possible with the amount of compute/memory we have
+                (think it would be in the petabytes to create a lookup table for this)
+        
+        - this might lead us later on if we notice the bot is not improving to reshape the reward function
+        - potential reward function ideas:
+            - profit in the last N games (10, 25, 100, 1000)
  
