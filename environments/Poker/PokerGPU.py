@@ -2,12 +2,15 @@ import torch
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+from pathlib import Path
+import struct
 
 class PokerGPU(gym.Env):
     metadata = {'render.modes': ['human']}
     NUM_ACTIONS=13
     ACTIVE, FOLDED, ALLIN, SITOUT = 0, 1, 2, 3
     STATE_SPACE=28 # details in depth_notes in rl folder
+    MAX_EQUITY_NUM=7462
 
     def __init__(self, device, agents, n_players=6, max_players=10, n_games=100, starting_bbs=100, max_bbs=1000, w1=.5, w2=.5, K=20):
         super().__init__()
@@ -32,6 +35,24 @@ class PokerGPU(gym.Env):
         
         # Initialize state tensors as None (will be set in reset)
         self.stacks = None
+
+        # initialize hand ranks table for hand strength calculator
+        
+        hand_rank_file=Path(__file__).parent/"HandRanks.dat"
+        if not hand_rank_file.exists():
+            raise FileNotFoundError(f"HandRanks.dat not found at {hand_rank_file}. Download link: https://github.com/chenosaurus/poker-evaluator/raw/master/data/HandRanks.dat. Then put file in the environments/Poker folder.")
+
+        file_size_bytes = hand_rank_file.stat().st_size
+        num_elements = file_size_bytes // 4
+        self.hand_ranks=torch.from_file(
+            filename=str(hand_rank_file),
+            shared=False,
+            dtype=torch.int32,
+            size=num_elements
+        ).to(device=self.device, non_blocking=True)
+
+        print("hand ranks: ", self.hand_ranks)
+        print(self.hand_ranks.shape)
 
     def set_agents(self, agents):
         self.agents=agents
@@ -270,9 +291,24 @@ class PokerGPU(gym.Env):
             self.pots[gg]=0
 
     def calculate_equities(self):
+        # calculate the equities of all players using the precomputed tables:
+        # for anyone that has won, award them the chips
+        
         equities=torch.zeros((self.n_games, self.active_players), device=self.device, dtype=torch.int32)
-        preflop, flop, turn, river = (self.stages == 0), (self.stages == 1), (self.stages == 2), (self.stages == 3)
+        # river equity calculation
+        river_mask=(self.stages==3)
+        active_counts = ((self.status == self.ACTIVE) | (self.status == self.ALLIN)).sum(dim=1)
+        multi_player_mask=active_counts>1
+        river_eval_mask=river_mask & multi_player_mask
 
+        if river_eval_mask.any():
+            eval_games=torch.where(river_eval_mask)
+            
+
+        # h1, h2 = self.hands[river, active_river, 0], self.hands[river, active_river, 1]
+        #boards=self.board[river]
+
+        pass
 
     def step(self, actions):
         # step function to handle logic of n_games actions at once
@@ -374,12 +410,13 @@ class PokerGPU(gym.Env):
         # showdown resolution, resolve winner by fold, stack change calculation for rewards
         self.is_done=terminated.clone()
         self.resolve_fold_winners(g)
+        # self.resolve_post_river_games()
 
         # calculate reward
-        # equities=torch.full((self.n_games, ), .5, dtype=torch.float32, device=self.device)
+        equities=torch.full((self.n_games, ), .5, dtype=torch.float32, device=self.device)
         # for equity calculation, we will be using (for right now) a 7-card lookup table 
             # takes into account a players hand and the board
-        equities=self.calculate_equities()
+        e=self.calculate_equities()
 
         stack_changes=self.stacks[g, self.idx]-prev_stacks
         active_counts = ((self.status == self.ACTIVE) | (self.status == self.ALLIN)).sum(dim=1).float()  # [n_games]
