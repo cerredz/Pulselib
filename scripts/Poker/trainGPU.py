@@ -49,6 +49,7 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
                     next_states=next_state[q_mask],
                     dones=dones[q_mask]
                 )
+                
             episode_reward += rewards[q_mask].sum().item() if q_mask.any() else 0
             #replay_buffer.add(state, actions, rewards, next_state, dones)
             state = next_state
