@@ -9,13 +9,16 @@ AGENTS:
   - "loose_passive"
   - "tight_aggressive"
   - "random"
+  - "loose_passive"
+  - "small_ball"
+  - "tight_aggressive"
 
 CAPACITY: 100000
-N_GAMES: 3000000
-EPISODES: 500
+N_GAMES: 4000000
+EPISODES: 100
 
 STARTING_BBS: 100
-NUM_PLAYERS: 6
+NUM_PLAYERS: 9
 
 STATE_SPACE: 39
 ACTION_SPACE: 13
@@ -24,7 +27,7 @@ W1: 2
 W2: .5
 W1_DECAY: .99999
 W2_DECAY: .9999
-K: 100
+K: 1000
 UPDATE_FREQ: 100
 GAMMA: .999
 

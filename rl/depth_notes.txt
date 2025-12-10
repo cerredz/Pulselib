@@ -327,3 +327,11 @@ Implementing a poker enviornment first ideas:
     - how to handle reward calculation for folded players?
         - nevermind, the reward for folded players will be 0 and the terminated states for these players will be 0
             - follows q-learning where reward(terminated) states=0
+
+    - right now we are using the standard 5-6-7 handrank.dat file for equitiy calculation   
+        - problem: at lets say turn, it provides the hand strength, not true equity
+            - for true equity we must simulate all possible river cards and average hand strength among each of them
+            - fear this will take too long (both in compute and implementing), so for right now we 
+                will use the standard 5-6-7 hand strength for equity calculation
+
+            

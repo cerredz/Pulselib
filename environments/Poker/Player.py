@@ -175,9 +175,11 @@ class SmallBallPlayerGPU(Player):
         high_card_mask = ((rank1 >= 10) & (rank2 > 5)) | ((rank2 >= 10) & (rank1 > 5)) 
         raise_mask=(pair_mask | high_card_mask) & ~fold_mask
         n_raises = raise_mask.sum().item()
-        indices=torch.randint(0, 3, (n_raises), device=self.device, dtype=torch.int32)
+        indices=torch.randint(0, 3, (n_raises, ), device=self.device)
         actions[raise_mask]=self.raise_distribution[indices]
         return actions
+
+    def learn(self): pass
 
 class PokerQNetwork(nn.Module):
     def __init__(self, weights_path, device, gamma, update_freq:int, state_dim=27, action_dim=13, hidden_dim=256, lr=1e-4):
@@ -195,6 +197,20 @@ class PokerQNetwork(nn.Module):
             nn.Linear(24, 18),
             nn.GELU(),
             nn.Linear(18, action_dim)
+        )
+
+        self.network2 = nn.Sequential(
+            nn.Linear(state_dim, 96),
+            nn.GELU(),
+            nn.Linear(96, 64),
+            nn.GELU(),
+            nn.Dropout(.3),
+            nn.Linear(64, 32),
+            nn.GELU(),
+            nn.Dropout(.2),
+            nn.Linear(32, 24),
+            nn.GELU(),
+            nn.Linear(24, action_dim)
         )
 
         if Path(weights_path).exists():

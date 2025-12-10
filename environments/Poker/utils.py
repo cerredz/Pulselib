@@ -177,3 +177,14 @@ def debug_state(st, pid, aid):
     print(f"Player: {pid} Action: {actions[aid]} | {stages[st[7]]} | Hand:{hand} Stack:{st[11]}BB Pos:{st[8]}\n"
           f"Board:{board} Pot:{st[9]}BB Call:{st[10]}BB | {opps}")
 
+def get_rotated_agents(agents, agent_types, episode_idx=None):
+    n = len(agents)
+    q_idx = agent_types.index(PokerAgentType.QLEARNING)           # original index of Q-agent
+    target_seat = (episode_idx % n) if episode_idx is not None else 0
+    rotation = (target_seat - q_idx) % n
+    
+    rotated_agents = agents[-rotation:] + agents[:-rotation]
+    rotated_types  = agent_types[-rotation:] + agent_types[:-rotation]
+    new_q_seat = target_seat                                      # Q-agent now sits here
+    
+    return rotated_agents, rotated_types, new_q_seat, rotation

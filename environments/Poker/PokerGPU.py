@@ -10,7 +10,8 @@ class PokerGPU(gym.Env):
     NUM_ACTIONS=13
     ACTIVE, FOLDED, ALLIN, SITOUT = 0, 1, 2, 3
     STATE_SPACE=28 # details in depth_notes in rl folder
-    MAX_EQUITY_NUM=7462
+    MIN_EQUITY_RANK=4145
+    MAX_EQUITY_RANK=36874
 
     def __init__(self, device, agents, n_players=6, max_players=10, n_games=100, starting_bbs=100, max_bbs=1000, w1=.5, w2=.5, K=20):
         super().__init__()
@@ -49,12 +50,6 @@ class PokerGPU(gym.Env):
             dtype=torch.int32,
             size=num_elements
         ).to(device=self.device, non_blocking=True)
-        #print(self.hand_ranks.shape)
-
-        print(f"Table[0] = {self.hand_ranks[0].item()}")
-        print(f"Table[53] = {self.hand_ranks[53].item()}")
-        print(f"Table[0:300] = {self.hand_ranks[0:300]}")
-
 
     def set_agents(self, agents):
         self.agents=agents
@@ -62,8 +57,10 @@ class PokerGPU(gym.Env):
     def reset(self, seed=None, options=None, rotation=0):
         super().reset(seed=seed)
         if options and options['active_players']:
-            self.active_players=torch.randint(2, self.n_players+1, (1,), device=self.device).item()
-        else: self.active_players=self.n_players
+            candidate_players=torch.randint(2, self.n_players+1, (1,), device=self.device).item()
+        else: candidate_players = self.n_players
+        q_seat = options.get('q_agent_seat', 0)
+        self.active_players = max(candidate_players, q_seat + 1)
 
         # game state tensors
         self.decks=torch.rand(self.n_games, 52, device=self.device).argsort(dim=1)
@@ -106,7 +103,6 @@ class PokerGPU(gym.Env):
         self.acted = torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
         self.is_done = torch.zeros(self.n_games, dtype=torch.bool, device=self.device)
         self.offsets=torch.zeros(self.n_games, dtype=torch.int32, device=self.device) # offset tensor for hand strength
-
         return self.get_obs(), self.get_info()
 
     def get_obs(self):
@@ -140,7 +136,8 @@ class PokerGPU(gym.Env):
 
     def get_info(self):
         return {
-            'active_players': self.active_players
+            'active_players': self.active_players,
+            'stacks': self.stacks
         }
 
     def post_blinds(self):
@@ -171,7 +168,6 @@ class PokerGPU(gym.Env):
         # the board
         n=len(g)
         if n==0: return torch.empty(0, n_cards, dtype=torch.int32, device=self.device)
-
         card_idx = self.deck_positions[g].unsqueeze(1) + torch.arange(n_cards, device=self.device).unsqueeze(0)        
         cards = self.decks[g.unsqueeze(1), card_idx]
         self.deck_positions[g] += n_cards
@@ -247,28 +243,6 @@ class PokerGPU(gym.Env):
         self.acted[pure_raise_indices] = 0 # 'new round' of betting on a raise, set acted to 0
         self.acted[raise_mask] += 1 # increase acted for raisers and callers
 
-    def calculate_showdown_winners(self, g):
-        # need way to calculate winners on the gpu when multiple people are left
-        # here is where we will do it
-
-        # algorithmic approach:
-            # we need to get the games that are past the post flop and have more than 1 active player
-            # board has 5 cards, each player has 2 cards
-            # card value split by suit -> 0-12=clubs, 13-25=diamonds, etc, each category is ascending order from 2->ace
-            # need masks for each type of hand in descending order of hands (depending on card values above)
-                # royal flush mask
-                # straight flush mask
-                # four of a kind mask, etc
-            # using masks, evaluate strength of each hand in the games we need to, handle side pots, and 
-                # award the pots to the winners
-                # hardest parts are SIDE POTS and TIE BREAKERS
-        
-        # find showdown games
-        pass
-
-    def resolve_winner_by_fold(self):
-        pass
-
     def poker_reward_gpu(self, equities, pots, investments, stack_changes, call_costs, fair_shares, actions):
         m=.5*((equities*pots)-investments)+.5*stack_changes
         o=call_costs/(pots+call_costs+1e-6)
@@ -277,10 +251,10 @@ class PokerGPU(gym.Env):
 
         s[call_mask] = (equities[call_mask] - o[call_mask]) * pots[call_mask]
         s[fold_mask] = (o[fold_mask] - equities[fold_mask]) * pots[fold_mask]
-        s[raise_mask] = equities[raise_mask] - fair_shares[raise_mask] * pots[raise_mask] * 1.2
+        s[raise_mask] = ((equities[raise_mask] - fair_shares[raise_mask]) * 1.2) * pots[raise_mask]
 
         weighted = (self.w1 * m) + (self.w2 * s)
-        r=self.n_players * torch.tanh(weighted/self.K)
+        r=300 * torch.tanh(weighted/self.K)
         return r
 
     def resolve_fold_winners(self, g):
@@ -294,57 +268,171 @@ class PokerGPU(gym.Env):
             self.stacks[gg, survivor] += self.pots[gg]
             self.pots[gg]=0
 
-    def calculate_equities(self):
-        equities = torch.full(
-            (self.n_games, self.n_players), self.MAX_EQUITY_NUM + 1, device=self.device, dtype=torch.int32
-        )
+    def resolve_terminated_games(self, g):
+        # resolves the terminated games
+        # games can either be terminated post-river or terminated 'early' where there are no players left to act
+        # filter by games with more than 1 player left (already implemented win by fold in resolve_fold_winners)
+        
+        # get all of the terminated games to the river stage
+        needs_resolution = (self.stages[g] == 4)
+        g = g[needs_resolution] 
+        if len(g) == 0: return 
 
-        river_mask = (self.stages == 3)
-        if not river_mask.any():
-            return equities
+        multiple_players = ((self.status[g] == self.ACTIVE) | (self.status[g] == self.ALLIN)).sum(dim=1) > 1
+        if not multiple_players.any(): return
+        flop_mask = (self.stages[g] == 1) & multiple_players
+        turn_mask = (self.stages[g] == 2) & multiple_players
+        river_mask = (self.stages[g] == 3) & multiple_players
 
-        n_river_games = river_mask.sum().item()
-        river_boards = self.board[river_mask]
-        river_hands = self.hands[river_mask, :self.active_players]
+        if flop_mask.any():
+            flop_games = g[flop_mask]   
+            self.deck_positions[flop_games] += 1  # burn
+            turn_cards = self.deal_cards(flop_games, 1)
+            self.board[flop_games, 3] = turn_cards.squeeze(1) 
+            self.deck_positions[flop_games] += 1  # burn
+            river_cards = self.deal_cards(flop_games, 1)
+            self.board[flop_games, 4] = river_cards.squeeze(1) 
 
-        hands_7_cards = torch.zeros(
-            (n_river_games, self.active_players, 7),
-            dtype=torch.int32,
-            device=self.device
-        )
+        if turn_mask.any():
+            turn_games = g[turn_mask]
+            self.deck_positions[turn_games] += 1  # burn
+            river_cards = self.deal_cards(turn_games, 1)
+            self.board[turn_games, 4] = river_cards.squeeze(1)
 
-        hands_7_cards[:, :, 0] = river_hands[:, :, 0]
-        hands_7_cards[:, :, 1] = river_hands[:, :, 1]
-        hands_7_cards[:, :, 2:7] = river_boards.unsqueeze(1)
+        showdown_mask = multiple_players
+        if not showdown_mask.any():return
 
-        # ✅ CRITICAL FIX: Convert 0-51 to 1-52 for TwoPlusTwo lookup
-        hands_7_cards = hands_7_cards + 1  # NOW 1-52!
+        showdown_games = g[showdown_mask]
+        n_showdown = showdown_games.shape[0]
+        
+        boards = self.board[showdown_games]  # [n_showdown, 5]
+        hands = self.hands[showdown_games, :self.active_players]  # [n_showdown, active_players, 2]
 
-        batch_size = n_river_games * self.active_players
-        hands_flat = hands_7_cards.view(batch_size, 7)  # Using 1-52 values
-
-        # Start at offset 53
+        hands_7 = torch.zeros((n_showdown, self.active_players, 7), dtype=torch.int32, device=self.device)
+        hands_7[:, :, 0:2] = hands
+        hands_7[:, :, 2:7] = boards.unsqueeze(1)
+        hands_7 = hands_7 + 1  # Convert to 1-indexed for lookup table
+    
+        # Evaluate all hands using hand_ranks lookup table
+        batch_size = n_showdown * self.active_players
+        hands_flat = hands_7.view(batch_size, 7)
         offsets = torch.full((batch_size,), 53, dtype=torch.int32, device=self.device)
-
+    
         for card_idx in range(7):
-            cards = hands_flat[:, card_idx]  # Values 1-52
-            indices = offsets + cards
+            indices = offsets + hands_flat[:, card_idx]
             offsets = self.hand_ranks[indices]
+    
+        hand_ranks = offsets.view(n_showdown, self.active_players)
+        player_status = self.status[showdown_games, :self.active_players]
+        eligible_mask = (player_status == self.ACTIVE) | (player_status == self.ALLIN)
+        hand_ranks = torch.where(eligible_mask, hand_ranks, torch.tensor(-1, device=self.device))
+        best_ranks = hand_ranks.max(dim=1, keepdim=True).values  # [n_showdown, 1]
+        winner_mask = (hand_ranks == best_ranks)  # [n_showdown, active_players] - True for winners
+    
+        # Count winners per game (for split pots)
+        num_winners = winner_mask.sum(dim=1)  # [n_showdown]
+    
+        # Distribute pot to winners
+        pots = self.pots[showdown_games].unsqueeze(1)  # [n_showdown, 1]
+        winnings = (pots * winner_mask.float()) / num_winners.unsqueeze(1)  # [n_showdown, active_players]
+        self.stacks[showdown_games.unsqueeze(1), torch.arange(self.active_players, device=self.device)] += winnings.to(torch.int32)
+        self.pots[showdown_games] = 0
+        self.stages[showdown_games] = 5
 
-        ranks = offsets.view(n_river_games, self.active_players)
-        river_game_indices = torch.where(river_mask)[0]
-        equities[river_game_indices[:, None], torch.arange(self.active_players, device=self.device)] = ranks
+    def calculate_equities(self):
+        # creates the equities tensor (might have to move before execute actions function in step function)
+        equities = torch.full((self.n_games, self.active_players), self.MIN_EQUITY_RANK + 1, device=self.device, dtype=torch.float32)
 
-        valid_ranks = (ranks >= 1) & (ranks <= 7462)
-        if valid_ranks.all():
-            print(f"✅ All {ranks.numel()} ranks valid!")
+        river_mask, turn_mask, flop_mask = (self.stages == 3), (self.stages==2), (self.stages==1)
+        if not river_mask.any() and not turn_mask.any() and not flop_mask.any():
+            pass
         else:
-            print(f"⚠️ WARNING: {(~valid_ranks).sum().item()} invalid ranks")
-        print(equities[river_game_indices][0:100])
+            n_river_games = river_mask.sum().item()
+            n_turn_games=turn_mask.sum().item()
+            n_flop_games=flop_mask.sum().item()
 
-        return equities
+            if n_river_games > 0:
+                river_boards = self.board[river_mask]
+                river_hands = self.hands[river_mask, :self.active_players]
+                
+                hands_7_cards_river = torch.zeros(
+                    (n_river_games, self.active_players, 7),
+                    dtype=torch.int32,
+                    device=self.device
+                )
+                
+                hands_7_cards_river[:, :, 0] = river_hands[:, :, 0]
+                hands_7_cards_river[:, :, 1] = river_hands[:, :, 1]
+                hands_7_cards_river[:, :, 2:7] = river_boards.unsqueeze(1)
+                hands_7_cards_river = hands_7_cards_river + 1  # Convert to 1-52
+                
+                # Evaluate river hands
+                batch_size = n_river_games * self.active_players
+                hands_flat = hands_7_cards_river.view(batch_size, 7)
+                river_offsets = torch.full((batch_size,), 53, dtype=torch.int32, device=self.device)
+                
+                for card_idx in range(7):
+                    indices = river_offsets + hands_flat[:, card_idx]
+                    river_offsets = self.hand_ranks[indices]
+                
+                ranks = river_offsets.view(n_river_games, self.active_players)
+                river_game_indices = torch.where(river_mask)[0]
+                equities[river_game_indices[:, None], torch.arange(self.active_players, device=self.device)] = ranks.float()
+                r = equities[river_mask].float()
+                mn, mx = r.min().item(), r.max().item()
+                equities[river_mask] = (r - mn) / (mx - mn + 1e-8)
 
+            if n_turn_games > 0:
+                turn_boards, turn_hands = self.board[turn_mask], self.hands[turn_mask, :self.active_players]
+                hands_6_cards=torch.zeros(
+                    (n_turn_games, self.active_players, 6), dtype=torch.int32,
+                    device=self.device
+                )
 
+                hands_6_cards[:, :, 0] = turn_hands[:, :, 0]
+                hands_6_cards[:, :, 1] = turn_hands[:, :, 1]
+                hands_6_cards[:, :, 2:] = turn_boards[:, 0:4].unsqueeze(1)
+                hands_6_cards = hands_6_cards + 1  # Convert to 1-52
+                batch_size=n_turn_games*self.active_players
+                hands_flat=hands_6_cards.view(batch_size, 6)
+                turn_offsets = torch.full((batch_size,), 53, dtype=torch.int32, device=self.device)
+                for card_idx in range(6):
+                    indices = turn_offsets + hands_flat[:, card_idx]
+                    turn_offsets = self.hand_ranks[indices]
+                
+                final_values=self.hand_ranks[turn_offsets]
+                ranks = final_values.view(n_turn_games, self.active_players)
+                turn_game_indices = torch.where(turn_mask)[0]
+                equities[turn_game_indices[:, None], torch.arange(self.active_players, device=self.device)] = ranks.float()
+                t = equities[turn_mask].float()
+                mn, mx = t.min().item(), t.max().item()
+                equities[turn_mask] = (t - mn) / (mx - mn + 1e-8)
+
+            if n_flop_games > 0:
+                flop_boards, flop_hands = self.board[flop_mask], self.hands[flop_mask, :self.active_players]
+                hands_5_cards = torch.zeros((n_flop_games, self.active_players, 5), dtype=torch.int32, device=self.device)
+                hands_5_cards[:, :, 0:2] = flop_hands
+                hands_5_cards[:, :, 2:] = flop_boards[:, 0:3].unsqueeze(1)  # flop is first 3 board cards
+                hands_5_cards = hands_5_cards + 1
+                batch_size = n_flop_games * self.active_players
+                hands_flat = hands_5_cards.view(batch_size, 5)
+                flop_offsets = torch.full((batch_size,), 53, dtype=torch.int32, device=self.device)
+                for card_idx in range(5):
+                    indices = flop_offsets + hands_flat[:, card_idx]
+                    flop_offsets = self.hand_ranks[indices]
+                offsets = self.hand_ranks[flop_offsets]      # first +0
+                final_ranks = self.hand_ranks[offsets]  # second +0
+                ranks = final_ranks.view(n_flop_games, self.active_players)
+                flop_game_indices = torch.where(flop_mask)[0]
+                equities[flop_game_indices[:, None], torch.arange(self.active_players, device=self.device)] = ranks.float()
+                f = equities[flop_mask]
+                mn, mx = f.min().item(), f.max().item()
+                equities[flop_mask] = (f - mn) / (mx - mn + 1e-8)
+                
+        preflop_mask = self.stages == 0
+        equities[preflop_mask] = 0.5
+        return equities[torch.arange(self.n_games), self.idx].float()
+    
     def step(self, actions):
         # step function to handle logic of n_games actions at once
         # get game indices ready
@@ -352,13 +440,15 @@ class PokerGPU(gym.Env):
         prev_stacks=self.stacks[g, self.idx].clone()
         prev_invested=self.current_round_bet[g, self.idx].clone()
 
-        # 1)  execute actions
-        self.execute_actions(g, actions)
+        # 1) calculate the equties of players hands
+        equities=self.calculate_equities()
 
+        # 2) execute actions 
+        self.execute_actions(g, actions)
         truly_active = ((self.status == self.ACTIVE)).sum(dim=1)
         all_allin_or_folded = (truly_active == 0)
 
-        # 2) find next player to act in current round
+        # 3) find next player to act in current round
         next_player_idx=self.idx.clone()
         is_round_over=torch.zeros(self.n_games, dtype=torch.bool, device=self.device)
         is_round_over[all_allin_or_folded] = True  # Round over if no one can act
@@ -386,30 +476,6 @@ class PokerGPU(gym.Env):
         no_over_mask=~is_round_over
         self.idx[no_over_mask]=next_player_idx[no_over_mask]
     
-        # find the next players in each round
-        """
-        offsets=torch.arange(1, self.active_players+1, dtype=torch.int32, device=self.device)
-        candidates=(next_player_idx.unsqueeze(1)+offsets)%self.active_players  
-        candidates_status=self.status[g.unsqueeze(1), candidates]
-        is_eligible=(candidates_status==self.ACTIVE) | (candidates_status == self.ALLIN)
-        has_eligible=is_eligible.any(dim=1)
-        first_eligible_idx = torch.where(
-            has_eligible,
-            is_eligible.float().argmax(dim=1),
-            torch.zeros_like(next_player_idx)
-        )
-        next_player=candidates[g, first_eligible_idx]
-
-        back_to_agg = (next_player == self.agg)
-        truly_active_counts = (self.status == self.ACTIVE).sum(dim=1)
-        all_acted = (self.acted >= truly_active_counts)
-        round_over_now = ((back_to_agg & all_acted) | ~has_eligible) & searching
-        is_round_over |= round_over_now
-        should_update = searching & has_eligible & ~round_over_now
-        next_player_idx = torch.where(should_update, next_player, next_player_idx)
-        no_over_mask = ~is_round_over
-        self.idx[no_over_mask] = next_player_idx[no_over_mask]
-        """
         # 3) handle round transitions & game ends
         terminated = torch.zeros(self.n_games, dtype=torch.bool, device=self.device)
         stack_changes = torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
@@ -433,35 +499,42 @@ class PokerGPU(gym.Env):
             post_river=(self.stages[transition_mask]>3)
             post_river_games = g_over[post_river]
             terminated[post_river_games] = True
+            self.stages[post_river_games] = 4
 
-            for street_mask, n_cards, start_col in [(flop_mask, 3, 0), (turn_mask, 1, 3), (river_mask, 1, 4)]:
-                if street_mask.any():
-                    street_games=g_over[street_mask]
-                    self.deck_positions[street_games]+= 1 # burn 1 card
-                    cards=self.deal_cards(street_games, n_cards)
-                    self.board[street_games, start_col:start_col+n_cards]=cards
+            if flop_mask.any():
+                street_games = g_over[flop_mask]
+                self.deck_positions[street_games] += 1
+                self.board[street_games, 0:3] = self.deal_cards(street_games, 3)
+            if turn_mask.any():
+                street_games = g_over[turn_mask]
+                self.deck_positions[street_games] += 1
+                self.board[street_games, 3] = self.deal_cards(street_games, 1).squeeze(1)
+            if river_mask.any():
+                street_games = g_over[river_mask]
+                self.deck_positions[street_games] += 1
+                self.board[street_games, 4] = self.deal_cards(street_games, 1).squeeze(1)
 
-        # showdown resolution, resolve winner by fold, stack change calculation for rewards
+        # 4) resolve fold winners, resolve games that are over with more than 1 active player currently
         self.is_done=terminated.clone()
         self.resolve_fold_winners(g)
-        # self.resolve_post_river_games()
+        self.resolve_terminated_games(g)
 
-        # calculate reward
-        #equities=torch.full((self.n_games, ), .5, dtype=torch.float32, device=self.device)
-        # for equity calculation, we will be using (for right now) a 7-card lookup table 
-            # takes into account a players hand and the board
-        equities_all=self.calculate_equities()
-        equities=equities_all[g, self.idx]
-        equities_normalized = 1.0 - (equities.float() / self.MAX_EQUITY_NUM)
+        all_done = self.is_done[g]
+        if all_done.any():
+            self.current_round_bet[g[all_done], :]=0
+            self.total_invested[g[all_done], :]=0
+            self.highest[g[all_done]]=0
 
+        # 5) with logic of 'round' of actions complete, compute things we need for our reward function
         stack_changes=self.stacks[g, self.idx]-prev_stacks
         active_counts = ((self.status == self.ACTIVE) | (self.status == self.ALLIN)).sum(dim=1).float()  # [n_games]
         fair_shares = 1.0 / torch.clamp(active_counts, min=1.0)  # [n_games]
         investment_this_step=prev_stacks-self.stacks[g, self.idx]
         call_costs = torch.maximum(torch.zeros_like(self.highest), self.highest - prev_invested)  # [n_games] non-negative
 
+        # 6) Calculate the actual reward
         rewards = self.poker_reward_gpu(
-            equities=equities_normalized,
+            equities=equities,
             pots=self.pots,
             investments=investment_this_step,
             stack_changes=stack_changes,
@@ -472,7 +545,5 @@ class PokerGPU(gym.Env):
         
         #terminated=torch.ones(self.n_games, device=self.device, dtype=torch.bool)
         truncated = torch.zeros(self.n_games, dtype=torch.bool, device=self.device)  # All False
-        info = {}
-
-        return self.get_obs(), rewards, terminated, truncated, info
+        return self.get_obs(), rewards, terminated, truncated, self.get_info()
 
