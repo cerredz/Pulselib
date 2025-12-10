@@ -36,12 +36,13 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
         terminated = torch.zeros(n_games, dtype=torch.bool, device=device)
         episode_reward=0
         
-        while terminated.float().mean() < .9:
+        while terminated.float().mean() < .97:
             curr_player_idxs = state[:, 8].long()
             actions = build_actions(state, curr_player_idxs, rotated_agents, rotated_types, device)
             next_state, rewards, dones, truncated, info = env.step(actions)
             q_mask = (curr_player_idxs == q_seat)
             if q_mask.any():
+                print("training")
                 agents[agent_types.index(PokerAgentType.QLEARNING)].train_step(
                     states=state[q_mask],
                     actions=actions[q_mask],

@@ -212,8 +212,7 @@ class PokerGPU(gym.Env):
         # all in 
         all_in_mask=(actions == 12) & raise_mask
         # handle all ins
-        if all_in_mask.any():
-            raise_amounts[all_in_mask]=self.stacks[self.g[all_in_mask], self.idx[all_in_mask]]
+        raise_amounts[all_in_mask]=self.stacks[self.g[all_in_mask], self.idx[all_in_mask]]
 
         # pot_sized fraction bets
         potsize_mask=((actions>=3) & (actions<= 11)) & raise_mask
@@ -269,10 +268,9 @@ class PokerGPU(gym.Env):
         ended=self.is_done[self.g]
         won=((self.status[self.g]==self.ACTIVE) | (self.status[self.g] == self.ALLIN)).sum(dim=1) == 1
         gg=self.g[ended & won]
-        if gg.any():
-            survivor=((self.status[gg] == self.ACTIVE) | (self.status[gg] == self.ALLIN)).long().argmax(dim=1)
-            self.stacks[gg, survivor] += self.pots[gg]
-            self.pots[gg]=0
+        survivor=((self.status[gg] == self.ACTIVE) | (self.status[gg] == self.ALLIN)).long().argmax(dim=1)
+        self.stacks[gg, survivor] += self.pots[gg]
+        self.pots[gg]=0
 
     def resolve_terminated_games(self):
         # resolves the terminated games
@@ -290,20 +288,19 @@ class PokerGPU(gym.Env):
         turn_mask = (self.stages[self.g] == 2) & multiple_players
         river_mask = (self.stages[self.g] == 3) & multiple_players
 
-        if flop_mask.any():
-            flop_games = self.g[flop_mask]   
-            self.deck_positions[flop_games] += 1  # burn
-            turn_cards = self.deal_cards(flop_games, 1)
-            self.board[flop_games, 3] = turn_cards.squeeze(1) 
-            self.deck_positions[flop_games] += 1  # burn
-            river_cards = self.deal_cards(flop_games, 1)
-            self.board[flop_games, 4] = river_cards.squeeze(1) 
+        
+        flop_games = self.g[flop_mask]   
+        self.deck_positions[flop_games] += 1  # burn
+        turn_cards = self.deal_cards(flop_games, 1)
+        self.board[flop_games, 3] = turn_cards.squeeze(1) 
+        self.deck_positions[flop_games] += 1  # burn
+        river_cards = self.deal_cards(flop_games, 1)
+        self.board[flop_games, 4] = river_cards.squeeze(1) 
 
-        if turn_mask.any():
-            turn_games = self.g[turn_mask]
-            self.deck_positions[turn_games] += 1  # burn
-            river_cards = self.deal_cards(turn_games, 1)
-            self.board[turn_games, 4] = river_cards.squeeze(1)
+        turn_games = self.g[turn_mask]
+        self.deck_positions[turn_games] += 1  # burn
+        river_cards = self.deal_cards(turn_games, 1)
+        self.board[turn_games, 4] = river_cards.squeeze(1)
 
         showdown_mask = multiple_players
         if not showdown_mask.any():return
@@ -503,28 +500,29 @@ class PokerGPU(gym.Env):
             self.is_done[post_river_games] = True
             self.stages[post_river_games] = 4
 
-            if flop_mask.any():
-                street_games = g_over[flop_mask]
-                self.deck_positions[street_games] += 1
-                self.board[street_games, 0:3] = self.deal_cards(street_games, 3)
-            if turn_mask.any():
-                street_games = g_over[turn_mask]
-                self.deck_positions[street_games] += 1
-                self.board[street_games, 3] = self.deal_cards(street_games, 1).squeeze(1)
-            if river_mask.any():
-                street_games = g_over[river_mask]
-                self.deck_positions[street_games] += 1
-                self.board[street_games, 4] = self.deal_cards(street_games, 1).squeeze(1)
+            # flop mask
+            street_games = g_over[flop_mask]
+            self.deck_positions[street_games] += 1
+            self.board[street_games, 0:3] = self.deal_cards(street_games, 3)
+            
+            # turn mask
+            street_games = g_over[turn_mask]
+            self.deck_positions[street_games] += 1
+            self.board[street_games, 3] = self.deal_cards(street_games, 1).squeeze(1)
+            
+            # river mask
+            street_games = g_over[river_mask]
+            self.deck_positions[street_games] += 1
+            self.board[street_games, 4] = self.deal_cards(street_games, 1).squeeze(1)
 
         # 4) resolve fold winners, resolve games that are over with more than 1 active player currently
         self.resolve_fold_winners()
         self.resolve_terminated_games()
 
         all_done = self.is_done[self.g]
-        if all_done.any():
-            self.current_round_bet[self.g[all_done], :]=0
-            self.total_invested[self.g[all_done], :]=0
-            self.highest[self.g[all_done]]=0
+        self.current_round_bet[self.g[all_done], :]=0
+        self.total_invested[self.g[all_done], :]=0
+        self.highest[self.g[all_done]]=0
 
         # 5) with logic of 'round' of actions complete, compute things we need for our reward function
         stack_changes=self.stacks[self.g, self.idx]-prev_stacks
