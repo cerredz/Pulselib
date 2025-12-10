@@ -88,8 +88,6 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
         title="Poker Q-Learning – Total Chip profit per episode batch"
     )
 
-
-
 if __name__ == "__main__":
     config=get_config_file(file_name=CONFIG_FILENAME)
     result_dir=get_result_folder(config["RESULTS_DIR"])
