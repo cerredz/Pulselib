@@ -273,7 +273,7 @@ class PokerGPU(gym.Env):
 
         e = self.equities[torch.arange(self.n_games), self.idx]
 
-        m=.5*((e*self.pots)-investments)+.5*stack_changes
+        m=((e*self.pots)-investments)+stack_changes
         o=call_costs/(self.pots+call_costs+1e-6)
         s=torch.zeros_like(m)
         fold_mask, call_mask, raise_mask=(actions==0), (actions==1), (actions>=2)
@@ -281,6 +281,10 @@ class PokerGPU(gym.Env):
         s[call_mask] = (e[call_mask] - o[call_mask]) * self.pots[call_mask]
         s[fold_mask] = (o[fold_mask] - e[fold_mask]) * self.pots[fold_mask]
         s[raise_mask] = ((e[raise_mask] - fair_shares[raise_mask]) * 1.2) * self.pots[raise_mask]
+
+
+
+
         return self.alpha * torch.tanh(((self.w1 * m) + (self.w2 * s))/self.K)
 
     def resolve_fold_winners(self):
