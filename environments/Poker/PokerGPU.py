@@ -38,6 +38,7 @@ class PokerGPU(gym.Env):
         self.action_space=spaces.Discrete(self.NUM_ACTIONS)
         self.raise_fractions=torch.tensor([0.25, 0.33, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00, 4.00], device=self.device)
         self.obs_size=12+((self.max_players-1)*3)
+        print(self.obs_size)
         self.observation_space = spaces.Box(low=0, high=10000, shape=(self.obs_size,), dtype=np.float32)
         
         # Initialize state tensors as None (will be set in reset)
@@ -154,6 +155,9 @@ class PokerGPU(gym.Env):
                 obs_parts.extend([
                     self.zeros, self.zeros, self.zeros
                 ])
+
+
+
 
         return torch.cat(obs_parts, dim=1)
 
