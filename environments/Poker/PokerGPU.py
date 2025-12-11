@@ -116,6 +116,11 @@ class PokerGPU(gym.Env):
         self.prev_invested=torch.zeros(self.n_games, device=self.device, dtype=torch.int32)
         self.active_player_idx=torch.arange(self.active_players, device=self.device)
 
+        self.seven_cards=torch.zeros((self.n_games, self.active_players, 7), device=self.device, dtype=torch.int32)
+        self.six_cards=torch.zeros((self.n_games, self.active_players, 6), device=self.device, dtype=torch.int32)
+        self.five_cards=torch.zeros((self.n_games, self.active_players, 5), device=self.device, dtype=torch.int32)
+
+        self.offsets=torch.full((self.n_games,), device=self.device, dtype=torch.int32)
 
         return self.get_obs(), self.get_info()
 
@@ -295,7 +300,6 @@ class PokerGPU(gym.Env):
         turn_mask = (self.stages[self.g] == 2) & multiple_players
         river_mask = (self.stages[self.g] == 3) & multiple_players
 
-        
         flop_games = self.g[flop_mask]   
         self.deck_positions[flop_games] += 1  # burn
         turn_cards = self.deal_cards(flop_games, 1)
@@ -360,53 +364,46 @@ class PokerGPU(gym.Env):
             n_river_games, n_turn_games, n_flop_games = counts[3], counts[2], counts[1],
 
             if n_river_games > 0:
+                self.seven_cards.fill_(0)
+
                 river_boards = self.board[river_mask]
                 river_hands = self.hands[river_mask, :self.active_players]
                 
-                hands_7_cards_river = torch.zeros(
-                    (n_river_games, self.active_players, 7),
-                    dtype=torch.int32,
-                    device=self.device
-                )
-                
-                hands_7_cards_river[:, :, 0] = river_hands[:, :, 0]
-                hands_7_cards_river[:, :, 1] = river_hands[:, :, 1]
-                hands_7_cards_river[:, :, 2:7] = river_boards.unsqueeze(1)
+                self.seven_cards[:n_river_games, :, 0] = river_hands[:, :, 0]
+                self.seven_cards[:n_river_games, :, 1] = river_hands[:, :, 1]
+                self.seven_cards[:n_river_games, :, 2:7] = river_boards.unsqueeze(1)
                 
                 # Evaluate river hands
                 batch_size = n_river_games * self.active_players
-                hands_flat = hands_7_cards_river.view(batch_size, 7)
-                river_offsets = torch.full((batch_size,), 53, dtype=torch.int32, device=self.device)
+                hands_flat = self.seven_cards[:n_river_games].view(batch_size, 7)
+                self.offsets.fill_(53)
                 
                 for card_idx in range(7):
-                    indices = river_offsets + hands_flat[:, card_idx]
-                    river_offsets = self.hand_ranks[indices]
+                    indices = self.offsets[:n_river_games] + hands_flat[:, card_idx]
+                    self.offsets[:n_river_games] = self.hand_ranks[indices]
                 
-                ranks = river_offsets.view(n_river_games, self.active_players)
+                ranks = self.offsets[:n_river_games].view(n_river_games, self.active_players)
                 river_game_indices = torch.where(river_mask)[0]
                 self.equities[river_game_indices[:, None], self.active_player_idx] = ranks.to(torch.float32)
                 r = self.equities[river_mask]
                 self.equities[river_mask] = (r - r.min()) / (r.max() - r.min() + 1e-8)
 
             if n_turn_games > 0:
+                self.six_cards.fill_(0)
                 turn_boards, turn_hands = self.board[turn_mask], self.hands[turn_mask, :self.active_players]
-                hands_6_cards=torch.zeros(
-                    (n_turn_games, self.active_players, 6), dtype=torch.int32,
-                    device=self.device
-                )
 
-                hands_6_cards[:, :, 0] = turn_hands[:, :, 0]
-                hands_6_cards[:, :, 1] = turn_hands[:, :, 1]
-                hands_6_cards[:, :, 2:] = turn_boards[:, 0:4].unsqueeze(1)
+                self.six_cards[:n_turn_games, :, 0] = turn_hands[:, :, 0]
+                self.six_cards[:n_turn_games, :, 1] = turn_hands[:, :, 1]
+                self.six_cards[:n_turn_games, :, 2:] = turn_boards[:, 0:4].unsqueeze(1)
                 batch_size=n_turn_games*self.active_players
-                hands_flat=hands_6_cards.view(batch_size, 6)
-                turn_offsets = torch.full((batch_size,), 53, dtype=torch.int32, device=self.device)
+                hands_flat=self.six_cards[:n_turn_games].view(batch_size, 6)
+                self.offsets.fill_(53)
                 
                 for card_idx in range(6):
-                    indices = turn_offsets + hands_flat[:, card_idx]
-                    turn_offsets = self.hand_ranks[indices]
+                    indices = self.offsets[:n_turn_games] + hands_flat[:, card_idx]
+                    self.offsets[:n_turn_games] = self.hand_ranks[indices]
                 
-                final_values=self.hand_ranks[turn_offsets]
+                final_values=self.hand_ranks[self.offsets[:n_turn_games]]
                 ranks = final_values.view(n_turn_games, self.active_players)
                 turn_game_indices = torch.where(turn_mask)[0]
                 self.equities[turn_game_indices[:, None], self.active_player_idx] = ranks.to(torch.float32)
@@ -414,23 +411,25 @@ class PokerGPU(gym.Env):
                 self.equities[turn_mask] = (t - t.min()) / (t.max() - t.min() + 1e-8)
 
             if n_flop_games > 0:
+                self.five_cards.fill_(0)
                 flop_boards, flop_hands = self.board[flop_mask], self.hands[flop_mask, :self.active_players]
-                hands_5_cards = torch.zeros((n_flop_games, self.active_players, 5), dtype=torch.int32, device=self.device)
-                hands_5_cards[:, :, 0:2] = flop_hands
-                hands_5_cards[:, :, 2:] = flop_boards[:, 0:3].unsqueeze(1)  # flop is first 3 board cards
+                self.five_cards[:n_flop_games, :, 0:2] = flop_hands
+                self.five_cards[:n_flop_games, :, 2:] = flop_boards[:, 0:3].unsqueeze(1)  # flop is first 3 board cards
                 batch_size = n_flop_games * self.active_players
-                hands_flat = hands_5_cards.view(batch_size, 5)
-                flop_offsets = torch.full((batch_size,), 53, dtype=torch.int32, device=self.device)
+                hands_flat = self.five_cards[:n_flop_games].view(batch_size, 5)
+                self.offsets.fill_(53)
                 for card_idx in range(5):
-                    indices = flop_offsets + hands_flat[:, card_idx]
-                    flop_offsets = self.hand_ranks[indices]
-                offsets = self.hand_ranks[flop_offsets]      # first +0
+                    indices = self.offsets[:n_flop_games] + hands_flat[:, card_idx]
+                    self.offsets[:n_flop_games] = self.hand_ranks[indices]
+                offsets = self.hand_ranks[self.offsets[:n_flop_games]]      # first +0
                 final_ranks = self.hand_ranks[offsets]  # second +0
                 ranks = final_ranks.view(n_flop_games, self.active_players)
                 flop_game_indices = torch.where(flop_mask)[0]
                 self.equities[flop_game_indices[:, None], self.active_player_idx] = ranks.to(torch.float32)
                 f = self.equities[flop_mask]
                 self.equities[flop_mask] = (f - f.min()) / (f.max() - f.min() + 1e-8)
+                print(f.min())
+                print(f.max())
                 
         preflop_mask = self.stages == 0
         self.equities[preflop_mask] = 0.5
