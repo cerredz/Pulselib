@@ -183,7 +183,7 @@ class SmallBallPlayerGPU(Player):
     def learn(self): pass
 
 class PokerQNetwork(nn.Module):
-    def __init__(self, weights_path, device, gamma, update_freq:int, state_dim=27, action_dim=13, hidden_dim=256, lr=1e-4):
+    def __init__(self, weights_path, device, gamma, update_freq:int, state_dim=27, action_dim=13, hidden_dim=256, lr=1e-3):
         super().__init__()
         self.update_freq=update_freq
         self.device=device  
