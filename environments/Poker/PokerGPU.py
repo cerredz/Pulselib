@@ -17,14 +17,16 @@ class PokerGPU(gym.Env):
     MIN_TURN_RIVER_EQUITY=4109.0
     MAX_TURN_RIVER_EQUITY=36874.0
 
-    def __init__(self, device, agents, n_players=6, max_players=10, n_games=100, starting_bbs=100, max_bbs=1000, w1=.5, w2=.5, K=20):
+    def __init__(self, device, agents, n_players=6, max_players=10, n_games=100, starting_bbs=100, max_bbs=1000, w1=.5, w2=.5, K=20, alpha=300):
         super().__init__()
-
-        self.w1=w1
-        self.w2=w2
-        self.K=K
-        # env 
         self.device=device
+
+        self.w1=torch.tensor(w1, device=self.device, dtype=torch.float32)
+        self.w2=torch.tensor(w2, device=self.device, dtype=torch.float32)
+        self.K=torch.tensor(K, device=self.device, dtype=torch.int32)
+        self.alpha=torch.tensor(alpha, device=self.device, dtype=torch.int32)
+        # env 
+        
         self.agents=agents
         self.n_players=n_players
         self.n_games=n_games
@@ -60,8 +62,8 @@ class PokerGPU(gym.Env):
         self.is_truncated=torch.zeros(self.n_games, dtype=torch.bool, device=self.device) # games never truncated early
         self.bb_amounts=torch.ones(self.n_games, device=self.device, dtype=torch.int32)
 
-        self.equity_turn_denom=max(self.MAX_TURN_RIVER_EQUITY - self.MIN_TURN_RIVER_EQUITY, 1e-8)
-        self.equity_flop_denom=max(self.MAX_FLOP_EQUITY - self.MIN_FLOP_EQUITY, 1e-8)
+        self.equity_turn_denom=torch.tensor(max(self.MAX_TURN_RIVER_EQUITY - self.MIN_TURN_RIVER_EQUITY, 1e-8), device=self.device, dtype=torch.int32)
+        self.equity_flop_denom=torch.tensor(max(self.MAX_FLOP_EQUITY - self.MIN_FLOP_EQUITY, 1e-8), device=self.device, dtype=torch.int32)
 
     def set_agents(self, agents):
         self.agents=agents
@@ -262,19 +264,24 @@ class PokerGPU(gym.Env):
             self.last_raise_size[pure_raise_indices] = actual_raise_sizes
             self.highest[pure_raise_indices] = new_bets
 
-    def poker_reward_gpu(self, equities, pots, investments, stack_changes, call_costs, fair_shares, actions):
-        m=.5*((equities*pots)-investments)+.5*stack_changes
-        o=call_costs/(pots+call_costs+1e-6)
+    def poker_reward_gpu(self, actions):
+        investments=self.prev_stacks-self.stacks[self.g, self.idx]
+        stack_changes=self.stacks[self.g, self.idx]-self.prev_stacks
+        active_counts = ((self.status == self.ACTIVE) | (self.status == self.ALLIN)).sum(dim=1).float()  # [n_games]
+        fair_shares = 1.0 / torch.clamp(active_counts, min=1.0)  # [n_games]
+        call_costs = torch.maximum(torch.zeros_like(self.highest), self.highest - self.prev_invested)  # [n_games] non-negative
+
+        e = self.equities[torch.arange(self.n_games), self.idx]
+
+        m=.5*((e*self.pots)-investments)+.5*stack_changes
+        o=call_costs/(self.pots+call_costs+1e-6)
         s=torch.zeros_like(m)
         fold_mask, call_mask, raise_mask=(actions==0), (actions==1), (actions>=2)
 
-        s[call_mask] = (equities[call_mask] - o[call_mask]) * pots[call_mask]
-        s[fold_mask] = (o[fold_mask] - equities[fold_mask]) * pots[fold_mask]
-        s[raise_mask] = ((equities[raise_mask] - fair_shares[raise_mask]) * 1.2) * pots[raise_mask]
-
-        weighted = (self.w1 * m) + (self.w2 * s)
-        r=300 * torch.tanh(weighted/self.K)
-        return r
+        s[call_mask] = (e[call_mask] - o[call_mask]) * self.pots[call_mask]
+        s[fold_mask] = (o[fold_mask] - e[fold_mask]) * self.pots[fold_mask]
+        s[raise_mask] = ((e[raise_mask] - fair_shares[raise_mask]) * 1.2) * self.pots[raise_mask]
+        return self.alpha * torch.tanh(((self.w1 * m) + (self.w2 * s))/self.K)
 
     def resolve_fold_winners(self):
         # calculate the winners of the pot and add to their stack
@@ -537,25 +544,10 @@ class PokerGPU(gym.Env):
         all_done = self.is_done[self.g]
         self.current_round_bet[self.g[all_done], :]=0
         self.total_invested[self.g[all_done], :]=0
-        self.highest[self.g[all_done]]=0
-
-        # 5) with logic of 'round' of actions complete, compute things we need for our reward function
-        stack_changes=self.stacks[self.g, self.idx]-self.prev_stacks
-        active_counts = ((self.status == self.ACTIVE) | (self.status == self.ALLIN)).sum(dim=1).float()  # [n_games]
-        fair_shares = 1.0 / torch.clamp(active_counts, min=1.0)  # [n_games]
-        investment_this_step=self.prev_stacks-self.stacks[self.g, self.idx]
-        call_costs = torch.maximum(torch.zeros_like(self.highest), self.highest - self.prev_invested)  # [n_games] non-negative
-
-        # 6) Calculate the actual reward
-        rewards = self.poker_reward_gpu(
-            equities=self.equities[torch.arange(self.n_games), self.idx],
-            pots=self.pots,
-            investments=investment_this_step,
-            stack_changes=stack_changes,
-            call_costs=call_costs,
-            fair_shares=fair_shares,
-            actions=actions
-        )
+        self.highest[self.g[all_done]]=0        
+        
+        # 5) Calculate the actual reward
+        rewards = self.poker_reward_gpu(actions=actions)
                 
         return self.get_obs(), rewards, self.is_done, self.is_truncated, self.get_info()
 

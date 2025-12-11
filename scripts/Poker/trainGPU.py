@@ -112,7 +112,8 @@ if __name__ == "__main__":
         starting_bbs=config["STARTING_BBS"], 
         w1=config["W1"],
         w2=config["W2"],
-        K=config["K"]
+        K=config["K"],
+        alpha=config["ALPHA"]
     )
     
     profiler = Profile()
