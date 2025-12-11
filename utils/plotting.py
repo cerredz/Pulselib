@@ -2,8 +2,15 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 from typing import List
+import pickle
 
 def plot_learning_curve(scores: List[float], file_path: str, window_size: int = 100, title: str = "Agent Learning Curve"):
+    data_file = file_path.rsplit('.', 1)[0] + '_scores.pkl' 
+    if os.path.exists(data_file):
+        with open(data_file, 'rb') as f:
+            previous_scores = pickle.load(f)
+        scores = previous_scores + scores  # append new scores
+        print(f"Loaded {len(previous_scores)} previous scores. Now plotting {len(scores)} total.")
     scores_series = pd.Series(scores)
     moving_avg = scores_series.rolling(window=window_size).mean()
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -23,4 +30,7 @@ def plot_learning_curve(scores: List[float], file_path: str, window_size: int = 
 
     except Exception as e:
         print(f"Error saving plot: {e}")
+
+    with open(data_file, 'wb') as f:
+        pickle.dump(scores, f)
     plt.close(fig)

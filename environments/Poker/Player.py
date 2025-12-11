@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import random
+from environments.Poker.PokerGPU import PokerGPU
 import eval7
 import math
 from environments.Poker.utils import decode_card
@@ -241,12 +242,27 @@ class PokerQNetwork(nn.Module):
             return torch.where(explore_mask, random_actions, greedy_actions)
 
     def train_step(self, states, actions, rewards, next_states, dones):
+        # get state and action tensor of all games, need to filter on the states/actions we want to train on
+        # dont want to train states based on 3 conditions:
+            # already stages >= 4 (game in post-river stage, no more actions our agent can make)
+            # already foled in prev round
+            # states where reward is 0 (terminated game)
+        
+        valid_games = (states[:, 7] < 4) & (rewards.abs() > 1e-6) & ((states[:, 12] == 0) | (states[:, 12] == 2))
+        if not valid_games.any(): return 0.0
+
+        states=states[valid_games]
+        actions=actions[valid_games]
+        rewards=rewards[valid_games]
+        next_states = next_states[valid_games]
+        dones = dones[valid_games]
+
         q_values=self.forward(states)
         q_values_for_actions = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)  # [batch]
 
         with torch.no_grad():
             next_q_values=self.target_network(next_states).max(dim=1).values
-            targets = rewards + self.gamma * next_q_values * (~dones).float()  # [batch]
+            targets = rewards + self.gamma * next_q_values * (~dones).float() 
 
         loss=self.criterion(q_values_for_actions, targets)
         self.optimizer.zero_grad()

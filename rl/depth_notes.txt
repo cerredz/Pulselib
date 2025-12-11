@@ -335,3 +335,15 @@ Implementing a poker enviornment first ideas:
                 will use the standard 5-6-7 hand strength for equity calculation
 
             
+    - when training, our reward is going up but our chip count is steadily going down in the graph
+        - this might not actually be because the bot is losing money (it could be it is continued to go down with more training)
+            - but what could also be happening is how we handle the stack logic after each reset
+        - if the agent gets to a point of over the maximum number of big blinds, the stack is reset to the original starting blinds number
+            - this would obviously be a HUGE loss of chips, which can affect the profit count MASSIVELY across millions of games
+        - it is fine for now, right now it is only important that our reward is going up (which it is), and will will investing solutions to the stack sizes later
+
+            - could reset stack after every episode:
+                - pros: easier to compute profit after each episode, profit number is realistically
+                - cons: nn will only learn/have state spaces around the starting bbs, which is not ideal for real-world cases (stack size ranges in real poker games)
+
+            - prob just going to return indices that have reached over the max bbs, then compute profit based on these seats (dont take into account negatives)

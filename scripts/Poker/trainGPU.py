@@ -34,15 +34,15 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
 
         initial_stacks = info['stacks'][:, q_seat].clone()
         terminated = torch.zeros(n_games, dtype=torch.bool, device=device)
-        episode_reward=0
+        episode_reward_tensor = torch.tensor(0.0, device=device) 
+        termination_threshold = torch.tensor(0.97, device=device) 
         
-        while terminated.float().mean() < .97:
+        while terminated.float().mean() < termination_threshold:
             curr_player_idxs = state[:, 8].long()
             actions = build_actions(state, curr_player_idxs, rotated_agents, rotated_types, device)
             next_state, rewards, dones, truncated, info = env.step(actions)
             q_mask = (curr_player_idxs == q_seat)
             if q_mask.any():
-                print("training")
                 agents[agent_types.index(PokerAgentType.QLEARNING)].train_step(
                     states=state[q_mask],
                     actions=actions[q_mask],
@@ -51,15 +51,17 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
                     dones=dones[q_mask]
                 )
 
-            episode_reward += rewards[q_mask].sum().item() if q_mask.any() else 0
+            episode_reward_tensor += rewards[q_mask].sum()
             state = next_state
             terminated |= dones
             total_steps += n_games
 
         final_stacks=info['stacks'][:, q_seat]
         episode_profit = (final_stacks - initial_stacks).sum().item()
+        episode_reward = episode_reward_tensor.item()
         reward_scores.append(episode_reward)
         scores.append(episode_profit)
+
         elapsed = time.time() - start_time
         steps_per_sec = total_steps / elapsed if elapsed > 0 else 0
         if (episode + 1) % 10 == 0:
@@ -112,6 +114,7 @@ if __name__ == "__main__":
         w2=config["W2"],
         K=config["K"]
     )
+    
     profiler = Profile()
     profiler.enable()
     train_agent(env, agents, agent_types, config["EPISODES"], config["N_GAMES"], device=device, results_dir=result_dir)

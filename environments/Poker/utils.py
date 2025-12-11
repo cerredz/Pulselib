@@ -108,25 +108,19 @@ def load_agents(num_players: int, agent_types: list, starting_stack: int, action
 def build_actions(state, curr_players, agents, agent_types, device, epsilon=0.1):
     n_games = state.shape[0]
     actions = torch.zeros(n_games, dtype=torch.long, device=device)
-    
+
     for agent_idx, agent_type in enumerate(agent_types):
         mask = (curr_players == agent_idx)
-        if not mask.any():
-            continue
             
-        game_indices = torch.where(mask)[0]
         agent_states = state[mask]
-        
         if agent_type == PokerAgentType.QLEARNING:
             agent_actions=agents[agent_idx].get_actions(agent_states)
-        # need to change to gpu
         elif agent_type == PokerAgentType.RANDOM:
-            agent_actions = torch.randint(0, 13, (len(agent_states),), device=device)
+            agent_actions = torch.randint(0, 13, (mask.sum(),), device=device)
         # heuristic players that we created
         else:
             agent_actions = agents[agent_idx].action(agent_states)
-        actions[game_indices] = agent_actions
-
+        actions[mask] = agent_actions
     return actions
 
 def load_gpu_agents(device, num_players: int, agent_types: list, starting_stack: int, action_space_n: int) -> list:
