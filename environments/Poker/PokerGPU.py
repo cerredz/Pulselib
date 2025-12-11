@@ -64,8 +64,7 @@ class PokerGPU(gym.Env):
 
         self.equity_turn_denom=torch.tensor(max(self.MAX_TURN_RIVER_EQUITY - self.MIN_TURN_RIVER_EQUITY, 1e-8), device=self.device, dtype=torch.int32)
         self.equity_flop_denom=torch.tensor(max(self.MAX_FLOP_EQUITY - self.MIN_FLOP_EQUITY, 1e-8), device=self.device, dtype=torch.int32)
-        self.s=torch.zeros(self.n_games, device=self.device, dtype=torch.float32)
-
+        self.zeros=torch.zeros(self.n_games, 1, device=self.device)
 
     def set_agents(self, agents):
         self.agents=agents
@@ -127,6 +126,7 @@ class PokerGPU(gym.Env):
         self.prev_stacks=torch.zeros(self.n_games, device=self.device, dtype=torch.int32)
         self.prev_invested=torch.zeros(self.n_games, device=self.device, dtype=torch.int32)
         self.active_player_idx=torch.arange(self.active_players, device=self.device)
+        self.s=torch.zeros(self.n_games, device=self.device, dtype=torch.float32)
 
         return self.get_obs(), self.get_info()
 
@@ -152,9 +152,7 @@ class PokerGPU(gym.Env):
                 ])
             else:
                 obs_parts.extend([
-                    torch.zeros(self.n_games, 1, device=self.device),
-                    torch.zeros(self.n_games, 1, device=self.device),
-                    torch.zeros(self.n_games, 1, device=self.device)
+                    self.zeros, self.zeros, self.zeros
                 ])
 
         return torch.cat(obs_parts, dim=1)
