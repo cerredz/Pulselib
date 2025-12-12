@@ -294,16 +294,18 @@ class PokerGPU(gym.Env):
         # filter by games with more than 1 player left (already implemented win by fold in resolve_fold_winners)
         
         # get all of the terminated games to the river stage
-        needs_resolution = (self.stages[self.g] == 4)
-        g_not_done = self.g[needs_resolution] 
-        if g_not_done.shape[0] == 0: return
+        needs_resolution=(self.stages < 5) & self.is_done
+        g_res = self.g[needs_resolution]
+        if g_res.shape[0] == 0: return
+        
+        multiple_players = ((self.status[g_res] == self.ACTIVE) | (self.status[g_res] == self.ALLIN)).sum(dim=1) > 1
+        #multiple_players_2 = (self.stages[self.g] == self.ACTIVE).int() + (self.stages[self.g] == self.ALLIN).int() > 1
 
-        multiple_players = ((self.status[self.g] == self.ACTIVE) | (self.status[self.g] == self.ALLIN)).sum(dim=1) > 1
         if not multiple_players.any(): return
-        flop_mask = (self.stages[self.g] == 1) & multiple_players
-        turn_mask = (self.stages[self.g] == 2) & multiple_players
+        flop_mask = (self.stages[g_res] == 1) & multiple_players
+        turn_mask = (self.stages[g_res] == 2) & multiple_players
+        flop_games = g_res[flop_mask]
 
-        flop_games = self.g[flop_mask]   
         self.deck_positions[flop_games] += 1  # burn
         turn_cards = self.deal_cards(flop_games, 1)
         self.board[flop_games, 3] = turn_cards.squeeze(1) 
@@ -311,7 +313,7 @@ class PokerGPU(gym.Env):
         river_cards = self.deal_cards(flop_games, 1)
         self.board[flop_games, 4] = river_cards.squeeze(1) 
 
-        turn_games = self.g[turn_mask]
+        turn_games = g_res[turn_mask]
         self.deck_positions[turn_games] += 1  # burn
         river_cards = self.deal_cards(turn_games, 1)
         self.board[turn_games, 4] = river_cards.squeeze(1)
@@ -319,7 +321,7 @@ class PokerGPU(gym.Env):
         showdown_mask = multiple_players
         if not showdown_mask.any():return
 
-        showdown_games = self.g[showdown_mask]
+        showdown_games = g_res[showdown_mask]
         n_showdown = showdown_games.shape[0]
         
         boards = self.board[showdown_games]  # [n_showdown, 5]

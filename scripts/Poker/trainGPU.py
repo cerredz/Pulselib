@@ -98,7 +98,15 @@ if __name__ == "__main__":
 
     device=load_device()
     agents, agent_types=load_gpu_agents(device, config["NUM_PLAYERS"], config["AGENTS"], config["STARTING_BBS"], POKER_ACTION_SPACE_N)
-    q_net=PokerQNetwork(weights_path=q_learning_model_weights, device=device, gamma=config["GAMMA"], update_freq=config["UPDATE_FREQ"], state_dim=config["STATE_SPACE"], action_dim=config["ACTION_SPACE"]).to(device)
+    q_net=PokerQNetwork(
+        weights_path=q_learning_model_weights, 
+        device=device, gamma=config["GAMMA"], 
+        update_freq=config["UPDATE_FREQ"], 
+        state_dim=config["STATE_SPACE"], 
+        action_dim=config["ACTION_SPACE"],
+        learning_rate=config["LEARNING_RATE"],
+        weight_decay=config["WEIGHT_DECAY"]
+        ).to(device)
 
     agents.insert(0, q_net)
     agent_types.insert(0, PokerAgentType.QLEARNING)

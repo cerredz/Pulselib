@@ -111,7 +111,6 @@ def build_actions(state, curr_players, agents, agent_types, device, epsilon=0.1)
 
     for agent_idx, agent_type in enumerate(agent_types):
         mask = (curr_players == agent_idx)
-            
         agent_states = state[mask]
         if agent_type == PokerAgentType.QLEARNING:
             agent_actions=agents[agent_idx].get_actions(agent_states)

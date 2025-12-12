@@ -348,7 +348,6 @@ Implementing a poker enviornment first ideas:
 
             - prob just going to return indices that have reached over the max bbs, then compute profit based on these seats (dont take into account negatives)
 
-
 - new state space: 
 
 0:5      → board (5)
@@ -362,3 +361,6 @@ Implementing a poker enviornment first ideas:
 13:18    → opponent stacks (5)
 18:23    → opponent active masks (5)
 23:28    → opponent bets this round (5)
+
+- look into reward calcuation with stack changes (think we could be unintentionally decentiving ALL bets via stack changes)
+

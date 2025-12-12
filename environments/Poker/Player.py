@@ -183,11 +183,12 @@ class SmallBallPlayerGPU(Player):
     def learn(self): pass
 
 class PokerQNetwork(nn.Module):
-    def __init__(self, weights_path, device, gamma, update_freq:int, state_dim=27, action_dim=13, hidden_dim=256, lr=1e-3):
+    def __init__(self, weights_path, device, gamma, update_freq:int, state_dim=27, action_dim=13, hidden_dim=256, learning_rate=1e-3, weight_decay=1e-3):
         super().__init__()
         self.update_freq=update_freq
-        self.device=device  
-        self.gamma=gamma      
+        self.device=device 
+        self.gamma=gamma     
+         
         # Simple feedforward network
         self.network = nn.Sequential(
             nn.Linear(state_dim, 32),
@@ -221,10 +222,14 @@ class PokerQNetwork(nn.Module):
         self.target_network=copy.deepcopy(self.network)
         self.target_network.eval()
 
-        self.lr = lr
+        self.lr = float(learning_rate)
+        self.wd = float(weight_decay)
         self.step_count=0
-        self.optimizer = torch.optim.AdamW(self.network.parameters(), lr=lr)
         self.criterion = nn.MSELoss()
+        self.optimizer=self.configure_optimizers()
+
+        #self.network=torch.compile(self.network)
+        #self.target_network=torch.compile(self.target_network)
     
     def forward(self, states):
         """
@@ -264,6 +269,8 @@ class PokerQNetwork(nn.Module):
             next_q_values=self.target_network(next_states).max(dim=1).values
             targets = rewards + self.gamma * next_q_values * (~dones).float() 
 
+        
+
         loss=self.criterion(q_values_for_actions, targets)
         self.optimizer.zero_grad()
         loss.backward()
@@ -276,6 +283,6 @@ class PokerQNetwork(nn.Module):
         return loss.item()
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=self.lr)
+        return torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.wd, fused=True)
 
 
