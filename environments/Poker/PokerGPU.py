@@ -296,7 +296,7 @@ class PokerGPU(gym.Env):
         # get all of the terminated games to the river stage
         needs_resolution = (self.stages[self.g] == 4)
         g_not_done = self.g[needs_resolution] 
-        if len(g_not_done) == 0: return
+        if g_not_done.shape[0] == 0: return
 
         multiple_players = ((self.status[self.g] == self.ACTIVE) | (self.status[self.g] == self.ALLIN)).sum(dim=1) > 1
         if not multiple_players.any(): return
