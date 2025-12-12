@@ -37,8 +37,7 @@ class PokerGPU(gym.Env):
         # action space / observation space
         self.action_space=spaces.Discrete(self.NUM_ACTIONS)
         self.raise_fractions=torch.tensor([0.25, 0.33, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00, 4.00], device=self.device)
-        self.obs_size=12+((self.max_players-1)*3)
-        print(self.obs_size)
+        self.obs_size=13+((self.max_players-1)*3)
         self.observation_space = spaces.Box(low=0, high=10000, shape=(self.obs_size,), dtype=np.float32)
         
         # Initialize state tensors as None (will be set in reset)
@@ -66,7 +65,7 @@ class PokerGPU(gym.Env):
         self.equity_turn_denom=torch.tensor(max(self.MAX_TURN_RIVER_EQUITY - self.MIN_TURN_RIVER_EQUITY, 1e-8), device=self.device, dtype=torch.int32)
         self.equity_flop_denom=torch.tensor(max(self.MAX_FLOP_EQUITY - self.MIN_FLOP_EQUITY, 1e-8), device=self.device, dtype=torch.int32)
         self.zeros=torch.zeros(self.n_games, 1, device=self.device)
-
+        
     def set_agents(self, agents):
         self.agents=agents
 
@@ -128,38 +127,29 @@ class PokerGPU(gym.Env):
         self.prev_invested=torch.zeros(self.n_games, device=self.device, dtype=torch.int32)
         self.active_player_idx=torch.arange(self.active_players, device=self.device)
         self.s=torch.zeros(self.n_games, device=self.device, dtype=torch.float32)
+        self.obs=torch.zeros((self.n_games, self.obs_size), device=self.device)
+        self.o=torch.arange(1, self.active_players, device=self.device)
 
         return self.get_obs(), self.get_info()
 
     def get_obs(self):
-        obs_parts = [
-            self.board,  # [n_games, 5]
-            self.hands[self.g, self.idx],  # [n_games, 2]
-            self.stages.unsqueeze(1),  # [n_games, 1]
-            ((self.idx - self.button) % self.active_players).unsqueeze(1),  # [n_games, 1]
-            self.pots.unsqueeze(1),  # [n_games, 1]
-            (self.highest - self.current_round_bet[self.g, self.idx]).unsqueeze(1),  # [n_games, 1]
-            self.stacks[self.g, self.idx].unsqueeze(1),  # [n_games, 1]
-            self.status[self.g, self.idx].unsqueeze(1)
-        ]
-        
-        for i in range(1, self.max_players):
-            if i < self.active_players:
-                opp = (self.idx + i) % self.active_players
-                obs_parts.extend([
-                    self.stacks[self.g, opp].unsqueeze(1),
-                    (self.status[self.g, opp] == self.ACTIVE).float().unsqueeze(1),
-                    self.current_round_bet[self.g, opp].unsqueeze(1)
-                ])
-            else:
-                obs_parts.extend([
-                    self.zeros, self.zeros, self.zeros
-                ])
+        self.obs[:, 0:5]=self.board
+        self.obs[:, 5:7]=self.hands[self.g, self.idx]
+        self.obs[:, 7:8]=self.stages.unsqueeze(1)
+        self.obs[:, 8:9]=((self.idx - self.button) % self.active_players).unsqueeze(1)
+        self.obs[:, 9:10]=self.pots.unsqueeze(1)
+        self.obs[:, 10:11]=(self.highest - self.current_round_bet[self.g, self.idx]).unsqueeze(1)
+        self.obs[:, 11:12]=self.stacks[self.g, self.idx].unsqueeze(1)
+        self.obs[:, 12:13]=self.status[self.g, self.idx].unsqueeze(1)
 
-
-
-
-        return torch.cat(obs_parts, dim=1)
+        # Calculate number of opponents
+        n_opp = self.active_players - 1
+        opp_idx = (self.idx.unsqueeze(1) + self.o) % self.active_players        
+        self.obs[:, 13 : 13+n_opp] = self.stacks[self.g].gather(1, opp_idx)
+        active_mask = (self.status[self.g].gather(1, opp_idx) == self.ACTIVE)
+        self.obs[:, 13+n_opp : 13+2*n_opp] = active_mask.float()
+        self.obs[:, 13+2*n_opp : 13+3*n_opp] = self.current_round_bet[self.g].gather(1, opp_idx)
+        return self.obs
 
     def get_info(self):
         return {
