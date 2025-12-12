@@ -239,11 +239,11 @@ class PokerQNetwork(nn.Module):
         return self.network(states)
     
     def get_actions(self, states, epsilon=.1):
-        with torch.no_grad():
-            q_values = self.forward(states)
-            explore_mask = torch.rand(len(states), device=self.device) < epsilon
+        with torch.inference_mode():
+            q_values = self.network(states)
+            explore_mask = torch.rand(states.shape[0], device=self.device) < epsilon
             greedy_actions = q_values.argmax(dim=1)
-            random_actions = torch.randint(0, 13, (len(states),), device=self.device)
+            random_actions = torch.randint(0, 13, (states.shape[0],), device=self.device)
             return torch.where(explore_mask, random_actions, greedy_actions)
 
     def train_step(self, states, actions, rewards, next_states, dones):
@@ -253,15 +253,7 @@ class PokerQNetwork(nn.Module):
             # already foled in prev round
             # states where reward is 0 (terminated game)
         
-        valid_games = (states[:, 7] < 4) & (rewards.abs() > 1e-6) & ((states[:, 12] == 0) | (states[:, 12] == 2))
-        if not valid_games.any(): return 0.0
-
-        states=states[valid_games]
-        actions=actions[valid_games]
-        rewards=rewards[valid_games]
-        next_states = next_states[valid_games]
-        dones = dones[valid_games]
-
+        valid_mask = (states[:, 7] < 4) & (rewards.abs() > 1e-6) & ((states[:, 12] == 0) | (states[:, 12] == 2))
         q_values=self.forward(states)
         q_values_for_actions = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)  # [batch]
 
@@ -269,11 +261,11 @@ class PokerQNetwork(nn.Module):
             next_q_values=self.target_network(next_states).max(dim=1).values
             targets = rewards + self.gamma * next_q_values * (~dones).float() 
 
-        
-
         loss=self.criterion(q_values_for_actions, targets)
-        self.optimizer.zero_grad()
-        loss.backward()
+        masked_loss=loss*valid_mask
+        final_loss = masked_loss.sum() / (valid_mask.sum() + 1e-6)
+        self.optimizer.zero_grad(set_to_none=True)
+        final_loss.backward()
         self.optimizer.step()
 
         self.step_count += 1
