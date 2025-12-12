@@ -1,4 +1,5 @@
 
+from pickle import TRUE
 from environments.Poker.Player import PokerQNetwork
 from environments.Poker.utils import PokerAgentType, build_actions, get_rotated_agents, load_agents, load_gpu_agents
 #from scripts.TFE.train import next_states
@@ -20,6 +21,7 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
     total_steps = 0
     start_time = time.time()
     scores, reward_scores=[], []
+    actions=torch.zeros(n_games, dtype=torch.long, device=device)
     
     for episode in range(episodes):
         rotated_agents, rotated_types, q_seat, rotations = get_rotated_agents(
@@ -36,10 +38,12 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
         terminated = torch.zeros(n_games, dtype=torch.bool, device=device)
         episode_reward_tensor = torch.tensor(0.0, device=device) 
         termination_threshold = torch.tensor(0.97, device=device) 
+        idx=0
         
-        while terminated.float().mean() < termination_threshold:
+        while True:
             curr_player_idxs = state[:, 8].long()
-            actions = build_actions(state, curr_player_idxs, rotated_agents, rotated_types, device)
+            actions.fill_(0)
+            actions = build_actions(state, actions, curr_player_idxs, rotated_agents, rotated_types, device)
             next_state, rewards, dones, truncated, info = env.step(actions)
             q_mask = (curr_player_idxs == q_seat)
             if q_mask.any():
@@ -55,6 +59,10 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
             state = next_state
             terminated |= dones
             total_steps += n_games
+            if idx % 5 == 0:
+                if terminated.float().mean() > termination_threshold:
+                    break
+            idx += 1
 
         final_stacks=info['stacks'][:, q_seat]
         episode_profit = (final_stacks - initial_stacks).sum().item()

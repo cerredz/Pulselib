@@ -9,6 +9,8 @@ import torch.nn as nn
 import copy
 from pathlib import Path
 
+torch.set_float32_matmul_precision('high')
+
 class Player(ABC):
     """
     Stateful object representing a player at the table.
@@ -187,33 +189,33 @@ class PokerQNetwork(nn.Module):
         super().__init__()
         self.update_freq=update_freq
         self.device=device 
-        self.gamma=gamma     
+        self.gamma=gamma
          
         # Simple feedforward network
         self.network = nn.Sequential(
-            nn.Linear(state_dim, 32),
+            nn.Linear(state_dim, 64),
             nn.GELU(),
-            nn.Linear(32, 24),
-            nn.GELU(),
-            nn.Dropout(),
-            nn.Linear(24, 18),
-            nn.GELU(),
-            nn.Linear(18, action_dim)
-        )
-
-        self.network2 = nn.Sequential(
-            nn.Linear(state_dim, 96),
-            nn.GELU(),
-            nn.Linear(96, 64),
-            nn.GELU(),
-            nn.Dropout(.3),
             nn.Linear(64, 32),
             nn.GELU(),
-            nn.Dropout(.2),
-            nn.Linear(32, 24),
+            nn.Dropout(),
+            nn.Linear(32, 16),
             nn.GELU(),
-            nn.Linear(24, action_dim)
+            nn.Linear(16, action_dim)
         )
+
+        #self.network2 = nn.Sequential(
+        #    nn.Linear(state_dim, 96),
+        #    nn.GELU(),
+        #    nn.Linear(96, 64),
+        #    nn.GELU(),
+        #    nn.Dropout(.3),
+        #    nn.Linear(64, 32),
+        #    nn.GELU(),
+        #    nn.Dropout(.2),
+        #   nn.Linear(32, 24),
+        #    nn.GELU(),
+        #    nn.Linear(24, action_dim)
+        #)
 
         if Path(weights_path).exists():
             model_weights=torch.load(weights_path, map_location=device)
@@ -228,8 +230,10 @@ class PokerQNetwork(nn.Module):
         self.criterion = nn.MSELoss()
         self.optimizer=self.configure_optimizers()
 
-        #self.network=torch.compile(self.network)
-        #self.target_network=torch.compile(self.target_network)
+        self.scaler=torch.amp.GradScaler('cuda')
+
+        #self.network=torch.compile(self.network, mode='reduce-overhead')
+        #self.target_network=torch.compile(self.target_network, mode='reduce-overhead')
     
     def forward(self, states):
         """
@@ -254,25 +258,34 @@ class PokerQNetwork(nn.Module):
             # states where reward is 0 (terminated game)
         
         valid_mask = (states[:, 7] < 4) & (rewards.abs() > 1e-6) & ((states[:, 12] == 0) | (states[:, 12] == 2))
-        q_values=self.forward(states)
-        q_values_for_actions = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)  # [batch]
+        if not valid_mask.any(): return 0.0
 
-        with torch.no_grad():
-            next_q_values=self.target_network(next_states).max(dim=1).values
-            targets = rewards + self.gamma * next_q_values * (~dones).float() 
+        states = states[valid_mask]
+        actions = actions[valid_mask]
+        rewards = rewards[valid_mask]
+        next_states = next_states[valid_mask]
+        dones = dones[valid_mask]
 
-        loss=self.criterion(q_values_for_actions, targets)
-        masked_loss=loss*valid_mask
-        final_loss = masked_loss.sum() / (valid_mask.sum() + 1e-6)
+        with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
+            q_values=self.forward(states)
+            q_values_for_actions = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)  # [batch]
+
+            with torch.no_grad():
+                next_q_values=self.target_network(next_states).max(dim=1).values
+                targets = rewards + self.gamma * next_q_values * (~dones).float() 
+
+            loss=self.criterion(q_values_for_actions, targets)
+
         self.optimizer.zero_grad(set_to_none=True)
-        final_loss.backward()
-        self.optimizer.step()
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
 
         self.step_count += 1
         if self.step_count % self.update_freq == 0:
             self.target_network.load_state_dict(self.network.state_dict())
 
-        return loss.item()
+        return loss
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.wd, fused=True)
