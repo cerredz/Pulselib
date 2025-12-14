@@ -1,6 +1,7 @@
 import yaml
 from pathlib import Path
 from typing import Tuple
+from typing import List
 
 def get_config_file(file_name: str) -> dict or None:
     config_dir=Path(__file__).parent.parent/"config"
@@ -31,3 +32,19 @@ def get_result_folder(result_dir: str) -> Path:
     if not Path.exists(res):
         res=res.mkdir(parents=True, exist_ok=True)
     return res
+
+def pulselib_env_names() -> List[str]:
+    return ["Pulse-2048-v2", 'Pulse-Poker-v1', "Pulse-Poker-GPU-v1"]
+
+# returns the result folder for PulseLib environemnt names
+def get_result_folder_env(env_name) -> Path:
+    assert env_name in pulselib_env_names(), f"cannot get result folder for {env_name}, incorrect env name for pulse lib environments"
+
+    folder_name_mapping = {
+        "Pulse-Poker-GPU-v1": "PokerGPU",
+        "Pulse-2048-v2": "2048"
+    }
+
+    res_dir=get_result_folder(folder_name_mapping[env_name])
+    return res_dir
+

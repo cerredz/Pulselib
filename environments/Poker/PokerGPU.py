@@ -65,7 +65,8 @@ class PokerGPU(gym.Env):
         self.equity_turn_denom=torch.tensor(max(self.MAX_TURN_RIVER_EQUITY - self.MIN_TURN_RIVER_EQUITY, 1e-8), device=self.device, dtype=torch.int32)
         self.equity_flop_denom=torch.tensor(max(self.MAX_FLOP_EQUITY - self.MIN_FLOP_EQUITY, 1e-8), device=self.device, dtype=torch.int32)
         self.zeros=torch.zeros(self.n_games, 1, device=self.device)
-        
+        self.offset_cards=torch.arange(52, device=self.device, dtype=torch.int32)
+
     def set_agents(self, agents):
         self.agents=agents
 
@@ -108,6 +109,7 @@ class PokerGPU(gym.Env):
         self.status[:, self.active_players:self.n_players]=self.SITOUT
 
         self.button = (self.button + 1) % self.active_players if hasattr(self, 'button_pos') else torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
+        self.button_pos=self.button[0]
         self.sb = (self.button + 1) % self.active_players
         self.bb = (self.button + 2) % self.active_players
         self.post_blinds()
@@ -172,7 +174,7 @@ class PokerGPU(gym.Env):
 
     def deal_players_cards(self, n_cards):
         """Deal n_cards from each game's deck, deal to players in the preflop_stage"""
-        card_idx = self.deck_positions.unsqueeze(1) + torch.arange(n_cards, device=self.device).unsqueeze(0)
+        card_idx = self.deck_positions.unsqueeze(1) + self.offset_cards[:n_cards].unsqueeze(0)
         cards = self.decks[self.g.unsqueeze(1), card_idx]
         self.deck_positions += n_cards
         return cards
@@ -180,7 +182,7 @@ class PokerGPU(gym.Env):
     def deal_cards(self, g, n_cards):
         # deals cards at a stage past the preflop, no longer dealing to players, but rather to 
         # the board
-        card_idx = self.deck_positions[g].unsqueeze(1) + torch.arange(n_cards, device=self.device).unsqueeze(0)        
+        card_idx = self.deck_positions[g].unsqueeze(1) + self.offset_cards[:n_cards].unsqueeze(0)
         cards = self.decks[g.unsqueeze(1), card_idx]
         self.deck_positions[g] += n_cards
         return cards.to(torch.int32)

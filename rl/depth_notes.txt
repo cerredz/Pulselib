@@ -65,8 +65,6 @@ numba for python notes:
     - try not to switch between python and numba alot in the same top-level python function 
         - try to configure it in a way where the numba is the top-level function and the python just allocates/sets stuff up
     - avoid creating new array entirely, create initial buffers that you manipulate
-    - 
-    
     
 Implementing a poker enviornment first ideas:
     - need 4 different actions, check, call, and raise, and fold
@@ -334,7 +332,6 @@ Implementing a poker enviornment first ideas:
             - fear this will take too long (both in compute and implementing), so for right now we 
                 will use the standard 5-6-7 hand strength for equity calculation
 
-            
     - when training, our reward is going up but our chip count is steadily going down in the graph
         - this might not actually be because the bot is losing money (it could be it is continued to go down with more training)
             - but what could also be happening is how we handle the stack logic after each reset
@@ -363,4 +360,13 @@ Implementing a poker enviornment first ideas:
 23:28    → opponent bets this round (5)
 
 - look into reward calcuation with stack changes (think we could be unintentionally decentiving ALL bets via stack changes)
+- explore and look into the build_agents bottleneck
+    - try to first optimize entire function
+    - try to optimize the specific players (i think we have alot of repeat computations)
 
+- do a deeper dive on optimizing "or" and "and" boolean masks on tensors
+    - thing we can do clever trick with math to speedup performance
+
+- only run the calculate_equities function when the STAGE changes (computed it repeatedly) at each step
+    equities dont change until the stages change
+    - basically doing the same thing 3 times in this function, try to batch it into 1

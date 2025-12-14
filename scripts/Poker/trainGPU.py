@@ -3,6 +3,7 @@ from pickle import TRUE
 from environments.Poker.Player import PokerQNetwork
 from environments.Poker.utils import PokerAgentType, build_actions, get_rotated_agents, load_agents, load_gpu_agents
 #from scripts.TFE.train import next_states
+from utils.benchmarking.benchmarking import create_benchmark_file
 from utils.config import get_config_file, get_result_folder
 import gymnasium as gym
 from utils.plotting import plot_learning_curve
@@ -16,8 +17,9 @@ CONFIG_FILENAME="pokerGPU.yaml"
 REWARDS_FILENAME="rewards_learning_curve"
 CHIPS_FILENAME="total_chips_curve"
 POKER_ACTION_SPACE_N=13
+ENV_NAME='Pulse-Poker-GPU-v1'
 
-def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, results_dir):
+def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, results_dir, config):
     total_steps = 0
     start_time = time.time()
     scores, reward_scores=[], []
@@ -43,22 +45,21 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
         while True:
             curr_player_idxs = state[:, 8].long()
             actions.fill_(0)
-            actions = build_actions(state, actions, curr_player_idxs, rotated_agents, rotated_types, device)
+            build_actions(state, actions, curr_player_idxs, rotated_agents, rotated_types, device)
             next_state, rewards, dones, truncated, info = env.step(actions)
             q_mask = (curr_player_idxs == q_seat)
-            if q_mask.any():
-                agents[agent_types.index(PokerAgentType.QLEARNING)].train_step(
-                    states=state[q_mask],
-                    actions=actions[q_mask],
-                    rewards=rewards[q_mask],
-                    next_states=next_state[q_mask],
-                    dones=dones[q_mask]
-                )
+            
+            agents[agent_types.index(PokerAgentType.QLEARNING)].train_step(
+                states=state[q_mask],
+                actions=actions[q_mask],
+                rewards=rewards[q_mask],
+                next_states=next_state[q_mask],
+                dones=dones[q_mask]
+            )
 
             episode_reward_tensor += rewards[q_mask].sum()
             state = next_state
             terminated |= dones
-            total_steps += n_games
             if idx % 5 == 0:
                 if terminated.float().mean() > termination_threshold:
                     break
@@ -69,6 +70,7 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
         episode_reward = episode_reward_tensor.item()
         reward_scores.append(episode_reward)
         scores.append(episode_profit)
+        total_steps += (n_games * idx)
 
         elapsed = time.time() - start_time
         steps_per_sec = total_steps / elapsed if elapsed > 0 else 0
@@ -84,6 +86,7 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
     torch.save(q_net.network.state_dict(), f"{results_dir}/poker_qnet_final.pth")
     reward_path=results_dir/REWARDS_FILENAME
     chips_path=result_dir/CHIPS_FILENAME
+    end_time=time.time()
 
     plot_learning_curve(
         scores=reward_scores, 
@@ -97,6 +100,15 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
         file_path=str(chips_path), 
         window_size=10, 
         title="Poker Q-Learning – Total Chip profit per episode batch"
+    )
+
+    create_benchmark_file(
+        env_name=ENV_NAME,
+        episodes_return=reward_scores,
+        start_time=start_time,
+        end_time=end_time,
+        total_steps=total_steps,
+        config=config
     )
 
 if __name__ == "__main__":
@@ -134,7 +146,7 @@ if __name__ == "__main__":
     
     profiler = Profile()
     profiler.enable()
-    train_agent(env, agents, agent_types, config["EPISODES"], config["N_GAMES"], device=device, results_dir=result_dir)
+    train_agent(env, agents, agent_types, config["EPISODES"], config["N_GAMES"], device=device, results_dir=result_dir, config=config)
     profiler.disable()
 
     stats = pstats.Stats(profiler)
