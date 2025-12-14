@@ -185,22 +185,28 @@ class SmallBallPlayerGPU(Player):
     def learn(self): pass
 
 class PokerQNetwork(nn.Module):
-    def __init__(self, weights_path, device, gamma, update_freq:int, state_dim=27, action_dim=13, hidden_dim=256, learning_rate=1e-3, weight_decay=1e-3):
+    def __init__(self, weights_path, device, gamma, update_freq:int, epsilon=.1, epsilon_end=.001, epsilon_decay=.99999, state_dim=27, action_dim=13, hidden_dim=256, learning_rate=1e-3, weight_decay=1e-3):
         super().__init__()
         self.update_freq=update_freq
         self.device=device 
         self.gamma=gamma
-         
+        self.epsilon=epsilon
+        self.epsilon_decay=epsilon_decay
+        self.epsilon_end =epsilon_end
+
         # Simple feedforward network
         self.network = nn.Sequential(
-            nn.Linear(state_dim, 64),
+            nn.Linear(state_dim, 128),
             nn.GELU(),
+            nn.Linear(128, 128),
+            nn.GELU(),
+            nn.Dropout(.3),
+            nn.Linear(128, 64),
+            nn.GELU(),
+            nn.Dropout(0.2),
             nn.Linear(64, 32),
             nn.GELU(),
-            nn.Dropout(),
-            nn.Linear(32, 16),
-            nn.GELU(),
-            nn.Linear(16, action_dim)
+            nn.Linear(32, action_dim)
         )
 
         #self.network2 = nn.Sequential(
@@ -242,10 +248,13 @@ class PokerQNetwork(nn.Module):
         """
         return self.network(states)
     
-    def get_actions(self, states, epsilon=.1):
+    def get_actions(self, states):
+        self.epsilon=max(self.epsilon * self.epsilon_decay, self.epsilon_end)
+
+        self.network.eval()
         with torch.inference_mode():
             q_values = self.network(states)
-            explore_mask = torch.rand(states.shape[0], device=self.device) < epsilon
+            explore_mask = torch.rand(states.shape[0], device=self.device) < self.epsilon
             greedy_actions = q_values.argmax(dim=1)
             random_actions = torch.randint(0, 13, (states.shape[0],), device=self.device)
             return torch.where(explore_mask, random_actions, greedy_actions)
@@ -257,7 +266,7 @@ class PokerQNetwork(nn.Module):
             # already foled in prev round
             # states where reward is 0 (terminated game)
         
-        valid_mask = (states[:, 7] < 4) & (rewards.abs() > 1e-6) & ((states[:, 12] == 0) | (states[:, 12] == 2))
+        valid_mask = (states[:, 7] < 4) & (rewards.abs() > 1e-16) & ((states[:, 12] == 0) | (states[:, 12] == 2))
         if not valid_mask.any(): return 0.0
 
         states = states[valid_mask]
@@ -278,10 +287,18 @@ class PokerQNetwork(nn.Module):
 
         self.optimizer.zero_grad(set_to_none=True)
         self.scaler.scale(loss).backward()
+
+        # gradient clipping
+        self.scaler.unscale_(self.optimizer)
+        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+
         self.scaler.step(self.optimizer)
         self.scaler.update()
 
         self.step_count += 1
+        if self.step_count % 1000 == 0:
+            print(f"Loss: {loss.item():.4f}, Avg Q: {q_values_for_actions.mean().item():.2f}, "
+          f"Avg Reward: {rewards.mean().item():.2f}")
         if self.step_count % self.update_freq == 0:
             self.target_network.load_state_dict(self.network.state_dict())
 

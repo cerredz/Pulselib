@@ -65,6 +65,7 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
                     break
             idx += 1
 
+        
         final_stacks=info['stacks'][:, q_seat]
         episode_profit = (final_stacks - initial_stacks).sum().item()
         episode_reward = episode_reward_tensor.item()

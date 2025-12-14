@@ -260,14 +260,15 @@ class PokerGPU(gym.Env):
 
     def poker_reward_gpu(self, actions):
         self.s.fill_(0)
-        investments = self.prev_stacks - self.stacks[self.g, self.idx]
-        stack_changes = self.stacks[self.g, self.idx] - self.prev_stacks
+        #investments = self.prev_stacks - self.stacks[self.g, self.idx]
+        #stack_changes = self.stacks[self.g, self.idx] - self.prev_stacks
         active_counts = ((self.status == self.ACTIVE) | (self.status == self.ALLIN)).sum(dim=1).float()
         fair_shares = 1.0 / torch.clamp(active_counts, min=1.0)
         call_costs = torch.maximum(torch.zeros_like(self.highest), self.highest - self.prev_invested)
         
+        # first part of reward function, promote higher equities with bigger pots
         e = self.equities[self.g, self.idx]
-        m = ((e * self.pots) - investments) + stack_changes
+        m = e * self.pots
         o = call_costs / (self.pots + call_costs + 1e-6)
         
         # Use pre-allocated masks and buffer
