@@ -1,0 +1,3 @@
+ENV_ID: "Pulse-Blackjack-Standard"
+BATCH_SIZE: 1000
+NUM_EPISODES: 1000

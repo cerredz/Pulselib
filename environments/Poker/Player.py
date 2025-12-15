@@ -200,10 +200,10 @@ class PokerQNetwork(nn.Module):
             nn.GELU(),
             nn.Linear(128, 128),
             nn.GELU(),
-            nn.Dropout(.3),
+            nn.Dropout(.1),
             nn.Linear(128, 64),
             nn.GELU(),
-            nn.Dropout(0.2),
+            nn.Dropout(0.1),
             nn.Linear(64, 32),
             nn.GELU(),
             nn.Linear(32, action_dim)
@@ -250,14 +250,15 @@ class PokerQNetwork(nn.Module):
     
     def get_actions(self, states):
         self.epsilon=max(self.epsilon * self.epsilon_decay, self.epsilon_end)
-
         self.network.eval()
         with torch.inference_mode():
             q_values = self.network(states)
             explore_mask = torch.rand(states.shape[0], device=self.device) < self.epsilon
             greedy_actions = q_values.argmax(dim=1)
             random_actions = torch.randint(0, 13, (states.shape[0],), device=self.device)
-            return torch.where(explore_mask, random_actions, greedy_actions)
+            actions = torch.where(explore_mask, random_actions, greedy_actions)
+        self.network.train()
+        return actions
 
     def train_step(self, states, actions, rewards, next_states, dones):
         # get state and action tensor of all games, need to filter on the states/actions we want to train on
@@ -266,7 +267,7 @@ class PokerQNetwork(nn.Module):
             # already foled in prev round
             # states where reward is 0 (terminated game)
         
-        valid_mask = (states[:, 7] < 4) & (rewards.abs() > 1e-16) & ((states[:, 12] == 0) | (states[:, 12] == 2))
+        valid_mask = (states[:, 7] < 4) & ((states[:, 12] == 0) | (states[:, 12] == 2))
         if not valid_mask.any(): return 0.0
 
         states = states[valid_mask]
@@ -275,30 +276,28 @@ class PokerQNetwork(nn.Module):
         next_states = next_states[valid_mask]
         dones = dones[valid_mask]
 
-        with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-            q_values=self.forward(states)
-            q_values_for_actions = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)  # [batch]
+        q_values=self.forward(states)
+        q_values_for_actions = q_values.gather(1, actions.unsqueeze(1)).squeeze(1) # 
+        with torch.no_grad():
+            next_q_values=self.target_network(next_states).max(dim=1).values
+            targets = rewards + self.gamma * next_q_values * (~dones).float() 
 
-            with torch.no_grad():
-                next_q_values=self.target_network(next_states).max(dim=1).values
-                targets = rewards + self.gamma * next_q_values * (~dones).float() 
-
-            loss=self.criterion(q_values_for_actions, targets)
+        loss=self.criterion(q_values_for_actions, targets)
 
         self.optimizer.zero_grad(set_to_none=True)
-        self.scaler.scale(loss).backward()
-
-        # gradient clipping
-        self.scaler.unscale_(self.optimizer)
+        loss.backward()
         torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
-
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
+        self.optimizer.step()
 
         self.step_count += 1
         if self.step_count % 1000 == 0:
-            print(f"Loss: {loss.item():.4f}, Avg Q: {q_values_for_actions.mean().item():.2f}, "
-          f"Avg Reward: {rewards.mean().item():.2f}")
+            print(f"Step {self.step_count} | Avg Loss: {loss.item():.2f} | "
+          f"Avg Q: {q_values_for_actions.mean().item():.2f} | "
+          f"Avg Reward: {rewards.mean().item():.2f} | "
+          f"Reward Range: [{rewards.min().item():.2f}, {rewards.max().item():.2f}] | "
+          f"Q Range: [{q_values_for_actions.min().item():.2f}, {q_values_for_actions.max().item():.2f}] | "
+          f"Epsilon: {self.epsilon:.4f}")
+
         if self.step_count % self.update_freq == 0:
             self.target_network.load_state_dict(self.network.state_dict())
 
@@ -306,5 +305,3 @@ class PokerQNetwork(nn.Module):
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.wd, fused=True)
-
-

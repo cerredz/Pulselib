@@ -17,3 +17,9 @@ register(
     entry_point='environments.Poker:PokerGPU',
     max_episode_steps=200000 
 )
+
+register(
+    id="Pulse-Blackjack-Standard",
+    entry_point='environments.blackjack.blackjack:BlackJack',
+    max_episode_steps=100000
+)

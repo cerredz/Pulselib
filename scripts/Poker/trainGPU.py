@@ -47,25 +47,26 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
             actions.fill_(0)
             build_actions(state, actions, curr_player_idxs, rotated_agents, rotated_types, device)
             next_state, rewards, dones, truncated, info = env.step(actions)
-            q_mask = (curr_player_idxs == q_seat)
+            q_mask = (info['seat_idx'] == q_seat)
+            terminated |= dones
+            active_games= (q_mask & terminated)
             
             agents[agent_types.index(PokerAgentType.QLEARNING)].train_step(
-                states=state[q_mask],
-                actions=actions[q_mask],
-                rewards=rewards[q_mask],
-                next_states=next_state[q_mask],
-                dones=dones[q_mask]
+                states=state[active_games],
+                actions=actions[active_games],
+                rewards=rewards[active_games],
+                next_states=next_state[active_games],
+                dones=dones[active_games]
             )
 
             episode_reward_tensor += rewards[q_mask].sum()
             state = next_state
-            terminated |= dones
+            
             if idx % 5 == 0:
                 if terminated.float().mean() > termination_threshold:
                     break
             idx += 1
 
-        
         final_stacks=info['stacks'][:, q_seat]
         episode_profit = (final_stacks - initial_stacks).sum().item()
         episode_reward = episode_reward_tensor.item()

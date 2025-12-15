@@ -370,3 +370,14 @@ Implementing a poker enviornment first ideas:
 - only run the calculate_equities function when the STAGE changes (computed it repeatedly) at each step
     equities dont change until the stages change
     - basically doing the same thing 3 times in this function, try to batch it into 1
+
+- reward function right now:
+    - stakes into account equity, size of pot, and pot odds,
+
+    - what we still need the reward function to take into account:
+        - position, our stack size, numer of opponents remaining
+
+BLACK JACK ENVIRONMENT:
+    - in order to test the stability of my deep q-agent, i will impliment a very simple blackjack environment
+        with a very simple deep q-learning neural network agent to make sure that we get the fundamentals right
+

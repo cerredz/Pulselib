@@ -124,39 +124,42 @@ class PokerGPU(gym.Env):
         # buffers that we call in our step function (pre-allocate the tensors)
         self.is_round_over=torch.zeros(self.n_games, dtype=torch.bool, device=self.device)
         self.searching=torch.ones(self.n_games, device=self.device, dtype=torch.bool)
-        self.equities=torch.full((self.n_games, self.active_players), self.MIN_EQUITY_RANK+1, device=self.device, dtype=torch.float32)
+        self.equities=torch.full((self.n_games, self.active_players), .5, device=self.device, dtype=torch.float32)
         self.prev_stacks=torch.zeros(self.n_games, device=self.device, dtype=torch.int32)
         self.prev_invested=torch.zeros(self.n_games, device=self.device, dtype=torch.int32)
         self.active_player_idx=torch.arange(self.active_players, device=self.device)
         self.s=torch.zeros(self.n_games, device=self.device, dtype=torch.float32)
         self.obs=torch.zeros((self.n_games, self.obs_size), device=self.device)
-        self.o=torch.arange(1, self.active_players, device=self.device)
+        self.o=torch.arange(1, self.max_players-1, device=self.device)
 
         return self.get_obs(), self.get_info()
 
     def get_obs(self):
-        self.obs[:, 0:5]=self.board
-        self.obs[:, 5:7]=self.hands[self.g, self.idx]
-        self.obs[:, 7:8]=self.stages.unsqueeze(1)
-        self.obs[:, 8:9]=((self.idx - self.button) % self.active_players).unsqueeze(1)
-        self.obs[:, 9:10]=self.pots.unsqueeze(1)
-        self.obs[:, 10:11]=(self.highest - self.current_round_bet[self.g, self.idx]).unsqueeze(1)
-        self.obs[:, 11:12]=self.stacks[self.g, self.idx].unsqueeze(1)
-        self.obs[:, 12:13]=self.status[self.g, self.idx].unsqueeze(1)
+        self.obs[:, 0:5] = self.board
+        self.obs[:, 5:7] = self.hands[self.g, self.idx]
+        self.obs[:, 7:8] = self.stages.unsqueeze(1)
+        self.obs[:, 8:9] = ((self.idx - self.button) % self.active_players).unsqueeze(1)
+        self.obs[:, 9:10] = self.pots.unsqueeze(1)
+        self.obs[:, 10:11] = (self.highest - self.current_round_bet[self.g, self.idx]).unsqueeze(1)
+        self.obs[:, 11:12] = self.stacks[self.g, self.idx].unsqueeze(1)
+        self.obs[:, 12:13] = self.status[self.g, self.idx].unsqueeze(1)
 
-        # Calculate number of opponents
         n_opp = self.active_players - 1
-        opp_idx = (self.idx.unsqueeze(1) + self.o) % self.active_players        
-        self.obs[:, 13 : 13+n_opp] = self.stacks[self.g].gather(1, opp_idx)
-        active_mask = (self.status[self.g].gather(1, opp_idx) == self.ACTIVE)
-        self.obs[:, 13+n_opp : 13+2*n_opp] = active_mask.float()
-        self.obs[:, 13+2*n_opp : 13+3*n_opp] = self.current_round_bet[self.g].gather(1, opp_idx)
+        opp_offsets = torch.arange(1, 1 + n_opp, device=self.device)  # Length = n_opp exactly
+        opp_idx = (self.idx.unsqueeze(1) + opp_offsets) % self.n_players
+        end_idx = 13 + n_opp * 3
+            
+        self.obs[:, 13:end_idx:3] = self.stacks[self.g.unsqueeze(1), opp_idx]
+        self.obs[:, 14:end_idx:3] = self.status[self.g.unsqueeze(1), opp_idx].float()
+        self.obs[:, 15:end_idx:3] = self.current_round_bet[self.g.unsqueeze(1), opp_idx]
+
         return self.obs
 
     def get_info(self):
         return {
             'active_players': self.active_players,
-            'stacks': self.stacks
+            'stacks': self.stacks,
+            'seat_idx': self.idx
         }
 
     def post_blinds(self):
@@ -248,15 +251,15 @@ class PokerGPU(gym.Env):
         raise_indices=torch.where(raise_mask)[0]
         pure_raise_indices=raise_indices[is_raise]
         new_bets = self.current_round_bet[self.g[pure_raise_indices], self.idx[pure_raise_indices]]
+        old_highest=self.highest[pure_raise_indices].clone()
         self.highest[pure_raise_indices] = torch.max(self.highest[pure_raise_indices], new_bets)
         self.agg[pure_raise_indices] = self.idx[pure_raise_indices]
         self.acted[pure_raise_indices] = 0 # 'new round' of betting on a raise, set acted to 0
         self.acted[raise_mask] += 1 # increase acted for raisers and callers
 
         if len(pure_raise_indices) > 0:
-            actual_raise_sizes = new_bets - self.highest[pure_raise_indices]
+            actual_raise_sizes = new_bets - old_highest
             self.last_raise_size[pure_raise_indices] = actual_raise_sizes
-            self.highest[pure_raise_indices] = new_bets
 
     def poker_reward_gpu(self, actions):
         self.s.fill_(0)
@@ -270,16 +273,18 @@ class PokerGPU(gym.Env):
         e = self.equities[self.g, self.idx]
         m = e * self.pots
         o = call_costs / (self.pots + call_costs + 1e-6)
+
+        # stack to pot odds ratio
+        #spr=self.stacks[self.g, self.idx].float() / torch.clamp(self.pots.float(), min=1.0)
         
         # Use pre-allocated masks and buffer
         call_mask = (actions == 1)
         fold_mask = (actions == 0)
         raise_mask = (actions >= 2)
-        
+
         self.s[call_mask] = (e[call_mask] - o[call_mask]) * self.pots[call_mask]
         self.s[fold_mask] = (o[fold_mask] - e[fold_mask]) * self.pots[fold_mask]
         self.s[raise_mask] = (e[raise_mask] - fair_shares[raise_mask]) * self.pots[raise_mask]
-        
         return self.alpha * torch.tanh(((self.w1 * m) + (self.w2 * self.s)) / self.K)
 
     def resolve_fold_winners(self):
@@ -447,7 +452,7 @@ class PokerGPU(gym.Env):
         self.prev_invested.copy_(self.current_round_bet[self.g, self.idx])
 
         # 1) calculate the equties of players hands
-        self.equities.fill_(self.MAX_EQUITY_RANK+1)
+        self.equities.fill_(.5)
         self.calculate_equities()
 
         # 2) execute actions 
@@ -474,7 +479,7 @@ class PokerGPU(gym.Env):
 
             # still eligible player left check
             player_status=self.status[self.g, next_player_idx]
-            is_eligible=((player_status==self.ACTIVE) | (player_status==self.ALLIN)) & self.searching
+            is_eligible=((player_status==self.ACTIVE)) & self.searching
             self.searching[is_eligible]=False
 
         no_over_mask=~self.is_round_over
@@ -531,4 +536,3 @@ class PokerGPU(gym.Env):
         # 5) Calculate the actual reward
         rewards = self.poker_reward_gpu(actions=actions)
         return self.get_obs(), rewards, self.is_done, self.is_truncated, self.get_info()
-

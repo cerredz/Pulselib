@@ -1,0 +1,38 @@
+config:
+  ACTION_SPACE: 13
+  AGENTS:
+  - tight_aggressive
+  - heuristic_hands
+  - heuristic_hands
+  - loose_passive
+  - tight_aggressive
+  - random
+  - loose_passive
+  - small_ball
+  - tight_aggressive
+  ALPHA: 50
+  CAPACITY: 100000
+  ENV_ID: Pulse-Poker-GPU-v1
+  EPISODES: 500
+  GAMMA: 0.95
+  K: 100
+  LEARNING_RATE: 2e-4
+  NUM_PLAYERS: 9
+  N_GAMES: 2000000
+  PLOT_FILENAME: ''
+  RESULTS_DIR: PokerGPU
+  SCORES_FILENAME: ''
+  STARTING_BBS: 100
+  STATE_SPACE: 40
+  UPDATE_FREQ: 20
+  W1: 0.5
+  W1_DECAY: 0.99999
+  W2: 0.3
+  W2_DECAY: 0.9999
+  WEIGHT_DECAY: 1e-5
+end_time: 1765760609.097213
+env: Pulse-Poker-GPU-v1
+sps: 23745672.8994
+start_time: 1765759546.587841
+total_steps: 25230000000
+total_training_seconds: 1062.509371995926
