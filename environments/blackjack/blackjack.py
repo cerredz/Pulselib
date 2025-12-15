@@ -9,6 +9,7 @@ import numpy as np
 class BlackJack(gym.Env):
     metadata = {'render.modes': ['human']}
     NUM_ACTIONS = 2 # hit, stand
+    WIN_REWARD, LOSS_REWARD = 1, -1
 
     def __init__(self, device, batch_size):
         super().__init__()
@@ -27,12 +28,12 @@ class BlackJack(gym.Env):
 
         self.deck_positions=torch.zeros(self.batch_size, device=self.device, dtype=torch.int32)
         self.terminated=torch.zeros(self.batch_size, device=self.device, dtype=torch.int32)
-        self.players_cards=torch.zeros((self.batch_size, 10), device=self.device, dtype=torch.int32)
+        self.players_cards=torch.zeros((self.batch_size, 20), device=self.device, dtype=torch.int32)
         self.players_card_idx=torch.zeros(self.batch_size, device=self.device, dtype=torch.int32)
         self.player_card_sums=torch.zeros(self.batch_size, device=self.device, dtype=torch.int32)
         self.has_ace=torch.zeros(self.batch_size, device=self.device, dtype=torch.bool)
         self.obs=torch.zeros(self.batch_size, device=self.device, dtype=torch.int32)
-        self.dealer_cards=torch.zeros((self.batch_size, 10), device=self.device, dtype=torch.int32)
+        self.dealer_cards=torch.zeros((self.batch_size, 20), device=self.device, dtype=torch.int32)
         self.dealer_card_idx=torch.zeros(self.batch_size, device=self.device, dtype=torch.int32)
         self.dealer_upcard=torch.zeros(self.batch_size, device=self.device, dtype=torch.int32)
         self.dealer_card_sums=torch.zeros(self.batch_size, device=self.device, dtype=torch.int32)
@@ -91,6 +92,12 @@ class BlackJack(gym.Env):
         self.player_card_sums[over_21_ace] -= 10
         self.has_ace[over_21_ace]=False
 
+        # handle same edge case for dealer with 2 aces
+        # handle edge case (player gets dealt 2 aces, they have sum of 22 currently)
+        over_21_ace = (self.dealer_card_sums > 21) & self.dealer_has_ace
+        self.dealer_card_sums[over_21_ace] -= 10
+        self.dealer_has_ace[over_21_ace]=False
+
     def get_obs(self):
         # state space: your sum, ace flag, dealers upcard
         self.obs[self.g, 0] = self.player_card_sums[self.g]
@@ -108,13 +115,14 @@ class BlackJack(gym.Env):
         hit_mask=(actions==0) & ~self.terminated
         cards=self.decks[hit_mask, self.deck_positions[hit_mask]]
         ranks=torch.clamp(cards % 13 + 1, max=10).to(torch.int32)
+        already_has_ace=self.has_ace[hit_mask]
         ace_mask=(ranks==1)
-        ranks[ace_mask] = 11
+        ranks[ace_mask & ~already_has_ace] = 11
 
         batch_idx=self.g[hit_mask]
         card_pos=self.players_card_idx[hit_mask]
         self.players_cards[batch_idx, card_pos] = ranks
-        self.has_ace |= ace_mask
+        self.has_ace[hit_mask] |= (ace_mask & ~already_has_ace)
         self.player_card_sums[hit_mask] += ranks
         self.deck_positions[hit_mask] += 1
         self.players_card_idx[hit_mask] += 1
@@ -125,18 +133,53 @@ class BlackJack(gym.Env):
         self.has_ace[over_21_ace]=False
 
         # action 1: stand
-        stand_mask=(actions==1)
+        stand_mask=(actions==1) & ~self.terminated
+        active_dealers=(self.dealer_card_sums < 17) & stand_mask
+        
+        while active_dealers.any():
+            cards=self.decks[active_dealers, self.deck_positions[active_dealers]]
+            ranks=torch.clamp(cards % 13 + 1, max=10).to(torch.int32)
+            ace_mask=(ranks==1)
+            dealer_already_has_ace=self.dealer_has_ace[active_dealers]
+            ranks[ace_mask & ~dealer_already_has_ace] = 11
 
+            batch_idx=self.g[active_dealers]
+            card_pos = self.dealer_card_idx[active_dealers]
+            self.dealer_cards[batch_idx, card_pos] = ranks
+            self.dealer_card_idx[active_dealers] += 1  
+            self.dealer_has_ace[active_dealers] |= (ace_mask & ~dealer_already_has_ace)
+            self.dealer_card_sums[active_dealers] += ranks
 
-    def calculate_rewards(self):
-        pass
+            over_21_with_ace = active_dealers & (self.dealer_card_sums > 21) & self.dealer_has_ace
+            self.dealer_card_sums[over_21_with_ace] -= 10
+            self.dealer_has_ace[over_21_with_ace] = False
+
+            self.deck_positions[active_dealers] += 1
+            active_dealers = stand_mask & (self.dealer_card_sums < 17) & (self.dealer_card_sums <= 21)
+
+        return hit_mask, stand_mask
+
+    def calculate_rewards(self, hit_mask, stand_mask):
+        # calculare rewards of players that hit 
+        over_21_player_card_sums=(self.player_card_sums > 21) & hit_mask
+        self.rewards[over_21_player_card_sums]=self.LOSS_REWARD
+        self.terminated |= over_21_player_card_sums
+
+        # calculate rewards of players that stood
+        player_sums=self.player_card_sums[stand_mask]
+        dealer_sums=self.dealer_card_sums[stand_mask]
+        stand_wins=(dealer_sums > 21) | (player_sums >= dealer_sums) # treat push as a win
+        self.rewards[stand_wins]=self.WIN_REWARD
+        stand_losses = (stand_mask & ~stand_wins)
+        self.rewards[stand_losses]=self.LOSS_REWARD
+        self.terminated |= stand_mask
 
     def step(self, actions):
         # execute actions
-        self.execute_actions(actions)
+        hit_mask, stand_mask = self.execute_actions(actions)
 
         # calculate rewards
-        self.calculate_rewards()
+        self.calculate_rewards(hit_mask, stand_mask)
 
         return self.get_obs(), self.rewards, self.terminated, None, self.get_info()
 
