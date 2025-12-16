@@ -39,18 +39,18 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
         initial_stacks = info['stacks'][:, q_seat].clone()
         terminated = torch.zeros(n_games, dtype=torch.bool, device=device)
         episode_reward_tensor = torch.tensor(0.0, device=device) 
-        termination_threshold = torch.tensor(0.97, device=device) 
+        termination_threshold = torch.tensor(0.8, device=device) 
         idx=0
         
         while True:
-            curr_player_idxs = state[:, 8].long()
+            #curr_player_idxs = state[:, 8].long()
             actions.fill_(0)
-            build_actions(state, actions, curr_player_idxs, rotated_agents, rotated_types, device)
-            next_state, rewards, dones, truncated, info = env.step(actions)
             q_mask = (info['seat_idx'] == q_seat)
+            build_actions(state, actions, info['seat_idx'], rotated_agents, rotated_types, device)
+            next_state, rewards, dones, truncated, info = env.step(actions)
+            terminated_before = terminated.clone() 
             terminated |= dones
-            active_games= (q_mask & terminated)
-            
+            active_games = q_mask & ~terminated_before 
             agents[agent_types.index(PokerAgentType.QLEARNING)].train_step(
                 states=state[active_games],
                 actions=actions[active_games],
@@ -59,7 +59,7 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
                 dones=dones[active_games]
             )
 
-            episode_reward_tensor += rewards[q_mask].sum()
+            episode_reward_tensor += rewards[active_games].sum()
             state = next_state
             
             if idx % 5 == 0:
@@ -128,7 +128,7 @@ if __name__ == "__main__":
         action_dim=config["ACTION_SPACE"],
         learning_rate=config["LEARNING_RATE"],
         weight_decay=config["WEIGHT_DECAY"]
-        ).to(device)
+    ).to(device)
 
     agents.insert(0, q_net)
     agent_types.insert(0, PokerAgentType.QLEARNING)

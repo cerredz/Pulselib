@@ -267,7 +267,7 @@ class PokerQNetwork(nn.Module):
             # already foled in prev round
             # states where reward is 0 (terminated game)
         
-        valid_mask = (states[:, 7] < 4) & ((states[:, 12] == 0) | (states[:, 12] == 2))
+        valid_mask = ((states[:, 12] == 0) | (states[:, 12] == 2))
         if not valid_mask.any(): return 0.0
 
         states = states[valid_mask]
@@ -277,7 +277,8 @@ class PokerQNetwork(nn.Module):
         dones = dones[valid_mask]
 
         q_values=self.forward(states)
-        q_values_for_actions = q_values.gather(1, actions.unsqueeze(1)).squeeze(1) # 
+        q_values_for_actions = q_values.gather(1, actions.unsqueeze(1)).squeeze(1) #
+
         with torch.no_grad():
             next_q_values=self.target_network(next_states).max(dim=1).values
             targets = rewards + self.gamma * next_q_values * (~dones).float() 

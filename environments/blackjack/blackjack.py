@@ -21,13 +21,15 @@ class BlackJack(gym.Env):
         self.g=torch.arange(self.batch_size, device=self.device, dtype=torch.int32)
 
     def reset(self, seed=None, options=None):
-        self.decks=torch.zeros((self.batch_size, 52), device=self.device, dtype=torch.int32)
         base_deck = torch.arange(52, device=self.device)
-        for i in range(self.batch_size):
-            self.decks[i] = base_deck[torch.randperm(52, device=self.device)]
+        base_deck_expanded = base_deck.unsqueeze(0).expand(self.batch_size, -1)
+        
+        # Generate random indices for each deck in parallel
+        random_indices = torch.argsort(torch.rand(self.batch_size, 52, device=self.device), dim=1)
+        self.decks = torch.gather(base_deck_expanded, 1, random_indices)
 
         self.deck_positions=torch.zeros(self.batch_size, device=self.device, dtype=torch.int32)
-        self.terminated=torch.zeros(self.batch_size, device=self.device, dtype=torch.int32)
+        self.terminated=torch.zeros(self.batch_size, device=self.device, dtype=torch.bool)
         self.players_cards=torch.zeros((self.batch_size, 20), device=self.device, dtype=torch.int32)
         self.players_card_idx=torch.zeros(self.batch_size, device=self.device, dtype=torch.int32)
         self.player_card_sums=torch.zeros(self.batch_size, device=self.device, dtype=torch.int32)
@@ -43,6 +45,7 @@ class BlackJack(gym.Env):
 
         # deal the first cards
         self.deal_starting_cards()
+
         return self.get_obs(), self.get_info()
         
     # deal the starting cards of a blackjack game
@@ -160,25 +163,25 @@ class BlackJack(gym.Env):
         return hit_mask, stand_mask
 
     def calculate_rewards(self, hit_mask, stand_mask):
-        # calculare rewards of players that hit 
+        # calculate rewards of players that hit 
         over_21_player_card_sums=(self.player_card_sums > 21) & hit_mask
         self.rewards[over_21_player_card_sums]=self.LOSS_REWARD
         self.terminated |= over_21_player_card_sums
 
         # calculate rewards of players that stood
+        stand_batch_idx = self.g[stand_mask]  # Get indices of games that stood
         player_sums=self.player_card_sums[stand_mask]
         dealer_sums=self.dealer_card_sums[stand_mask]
-        stand_wins=(dealer_sums > 21) | (player_sums >= dealer_sums) # treat push as a win
-        self.rewards[stand_wins]=self.WIN_REWARD
-        stand_losses = (stand_mask & ~stand_wins)
-        self.rewards[stand_losses]=self.LOSS_REWARD
-        self.terminated |= stand_mask
+        stand_wins=(dealer_sums > 21) | (player_sums >= dealer_sums)  # treat push as a win
+        self.rewards[stand_batch_idx[stand_wins]]=self.WIN_REWARD
+        self.rewards[stand_batch_idx[~stand_wins]]=self.LOSS_REWARD
+        self.terminated[stand_mask]=True
 
     def step(self, actions):
         # execute actions
         hit_mask, stand_mask = self.execute_actions(actions)
-
         # calculate rewards
+        self.rewards.zero_()
         self.calculate_rewards(hit_mask, stand_mask)
 
         return self.get_obs(), self.rewards, self.terminated, None, self.get_info()
