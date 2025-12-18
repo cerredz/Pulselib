@@ -381,3 +381,13 @@ BLACK JACK ENVIRONMENT:
     - in order to test the stability of my deep q-agent, i will impliment a very simple blackjack environment
         with a very simple deep q-learning neural network agent to make sure that we get the fundamentals right
 
+    - add replay buffer support for parallized tensor environments
+        - 
+
+    - what i am going to do tomorrow:
+        - replay buffer full implementation
+        - double dqn full implementation
+        - dqn + no replay buffer, dqn + replay buffer, double dqn no replay, double dq replay benchmarks
+
+        - refactor some code, make the training scripts easier to setup
+            - make storing results, plots, runs, etc, easier
