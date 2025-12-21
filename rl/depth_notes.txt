@@ -391,3 +391,9 @@ BLACK JACK ENVIRONMENT:
 
         - refactor some code, make the training scripts easier to setup
             - make storing results, plots, runs, etc, easier
+
+
+- next agents that I want to implement for RL algs:
+    - deep sarsa, 
+    - deuling DQN
+    - actor critic
