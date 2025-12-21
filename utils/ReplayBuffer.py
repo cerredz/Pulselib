@@ -22,10 +22,8 @@ class ReplayBuffer():
     def __len__(self):
         return len(self.buffer)
 
-
 # pytorch replay buffer class
 ## (right now buffer lives in RAM, going to look into how to move to disk to store even bigger replays)
-
 class ReplayBufferTorch:
     def __init__(self, file_path: str, capacity: int, device: str, state_dim: int, action_dim: int):
         assert state_dim > 0 and action_dim > 0

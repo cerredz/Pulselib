@@ -1,4 +1,5 @@
 from agents.TemperalDifference.DQN import DQN
+from agents.TemperalDifference.DoubleDQN import DoubleDQN
 from environments.blackjack.utils import blackjack_training_utils
 import torch
 from utils.config import get_config_file, get_result_folder
@@ -48,6 +49,7 @@ def train_agent(env, device, config, agent, results_dir):
                   f"Speed: {steps_per_sec:6.1f} steps/sec")
 
     scores = episode_rewards.detach().cpu().tolist()
+
     plot_learning_curve(
         scores=scores, 
         file_path=str(results_dir/"reward_learning_curve"), 
@@ -68,11 +70,11 @@ if __name__ == "__main__":
         batch_size=config["BATCH_SIZE"]
     )
 
-    agent = DQN(
+    agent = DoubleDQN(
         env_action_space=env.action_space,
         state_dim=config["STATE_DIM"],
         device=device,
-        q_learning_rate=config["Q_LEARNING_RATE"],
+        gamma=config["Q_LEARNING_RATE"],
         criterion=criterion,
         learning_rate=config["LEARNING_RATE"],
         weight_decay=config["WEIGHT_DECAY"],

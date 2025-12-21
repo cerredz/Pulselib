@@ -10,10 +10,11 @@ from typing import Optional
 
 # an implementation of a reusable deep neural network that predicts q-values for reinforcement learning environemnts
 # goal is to make it abstract enough to basically just plug into different training scripts
+# uses a double dqn approach for the reinforcemnet learning algorithm
 
 # can load in a weights file, can pass in the network, target network, optimizer, and loss function
 
-class DQN(nn.Module):
+class DoubleDQN(nn.Module):
     def __init__(
         self,
         env_action_space: gym.spaces.Space,
@@ -107,10 +108,15 @@ class DQN(nn.Module):
         pred_q = all_q_values.gather(1, actions.unsqueeze(-1)).squeeze(-1)  # Shape: (batch_size,)
         
         with torch.no_grad():
-            q_values_next=self.target_network(next_states)
-            max_q_next=q_values_next.max(dim=1).values
-            true_q=rewards + (1 - dones.float()) * self.gamma * max_q_next
-        
+            # select best actions from online network
+            q_values_network_next=self.network(next_states)
+            argmax_q_next=q_values_network_next.argmax(dim=1)
+            
+            # use target network to evaluate the actions of the online network
+            q_values_target_next=self.target_network(next_states)
+            max_q_next = q_values_target_next.gather(1, argmax_q_next.unsqueeze(-1)).squeeze(-1)
+            true_q = rewards + (1 - dones.float()) * self.gamma * max_q_next
+
         loss=self.criterion(pred_q, true_q)
         self.optimizer.zero_grad()
         loss.backward()
@@ -122,10 +128,3 @@ class DQN(nn.Module):
 
         if self.step % self.update == 0:
             self.target_network.load_state_dict(self.network.state_dict())
-
-    # save the network and target network somewhere
-    def save(self, network_save_path, target_save_path):
-        assert Path.exists(network_save_path) and Path.exists(target_save_path)
-
-        torch.save(self.network.state_dict(), network_save_path)
-        torch.save(self.target_network.state_dict(), target_save_path)
