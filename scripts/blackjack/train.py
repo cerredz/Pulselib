@@ -1,6 +1,7 @@
 from agents.TemperalDifference.ActorCritic import ActorCritic
 from agents.TemperalDifference.DQN import DQN
 from agents.TemperalDifference.DoubleDQN import DoubleDQN
+from agents.TemperalDifference.DuelingDQN import DeulingDQN
 from environments.blackjack.utils import blackjack_training_utils
 import torch
 from utils.agents import default_actor_critic_params
@@ -72,8 +73,8 @@ if __name__ == "__main__":
         device=device,
         batch_size=config["BATCH_SIZE"]
     )
-    """
-    agent = DoubleDQN(
+    
+    agent = DeulingDQN(
         env_action_space=env.action_space,
         state_dim=config["STATE_DIM"],
         device=device,
@@ -90,9 +91,8 @@ if __name__ == "__main__":
         target_network=None,
         weights_path=None,
     )
-    """
 
-    params=default_actor_critic_params(env, config["STATE_DIM"], device)
-    agent=ActorCritic(**params)
+    #params=default_actor_critic_params(env, config["STATE_DIM"], device)
+    #agent=ActorCritic(**params)
 
     train_agent(env, device, config, agent, results_dir)

@@ -392,8 +392,12 @@ BLACK JACK ENVIRONMENT:
         - refactor some code, make the training scripts easier to setup
             - make storing results, plots, runs, etc, easier
 
-
 - next agents that I want to implement for RL algs:
     - deep sarsa, 
     - deuling DQN
+        - is basically the same as bellman, but splits the q value prediction into 2
+            - calculates value of S regardles of action, how valuable is being in this state
+            - calculates advantage(s, a) -> how much better is taking the predicted action than the average action value seen in this state
+
     - actor critic
+    - recurrent DQN
