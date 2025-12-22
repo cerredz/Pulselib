@@ -401,3 +401,16 @@ BLACK JACK ENVIRONMENT:
 
     - actor critic
     - recurrent DQN
+
+
+    - DDPG:
+        - model-free off policy rl alg designed to handle continuous action spaces
+        - learns determinstic policy directly
+        - actor:
+            - maps the state to an action
+            - outputs an action and not a probability distribution
+            - 
+        - critic:
+            - estimates the q-value pairs
+
+        - 

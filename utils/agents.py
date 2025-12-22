@@ -1,6 +1,9 @@
 import gymnasium as gym
 import torch
 import torch.nn as nn
+import torch.optim as optim
+from pathlib import Path
+from typing import Dict, Optional, Any
 """
 def get_agent(agent_id: str, env: gym.Env, config: dict):
     if agent_id == "q_learning":
@@ -34,3 +37,32 @@ def default_actor_critic_params(env, state_dim, device=torch.device("cpu")):
         'learning_rate': 1e-3,
         'weight_decay': 1e-4
     }
+
+# basic utility function to either validate or assign
+# default optimizer to agents (AdamW)
+def load_optimizer(optimizer, parameters, learning_rate, weight_decay):
+    if optimizer is None:
+        return optim.AdamW(parameters, lr=learning_rate, weight_decay=weight_decay)
+
+    if isinstance(optimizer, optim.Optimizer):
+            return optimizer    
+
+    if isinstance(optimizer, type) and issubclass(optimizer, optim.Optimizer):
+        return optimizer(parameters, lr=learning_rate, weight_decay=weight_decay)
+
+    raise TypeError(
+        "optimizer must be None, a torch.optim.Optimizer instance, "
+        "or a torch.optim.Optimizer class"
+    )
+
+# utility function to load in a weights path
+# input could be None
+def load_weights_path(weights_path, device) -> Optional[Dict[str, Any]] :
+    if weights_path is not None:
+        assert isinstance(weights_path, (str, Path)), "weights_path must be a string or pathlib.Path"
+        path = Path(weights_path)
+        assert path.suffix == '.pth', "weights_path must end with '.pth'"
+        assert path.exists(), f"weights_path does not exist on disk: {path}"
+        return torch.load(path, map_location=device, weights_only=True)
+    
+    return None
