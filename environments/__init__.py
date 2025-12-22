@@ -23,3 +23,9 @@ register(
     entry_point='environments.blackjack.blackjack:BlackJack',
     max_episode_steps=100000
 )
+
+register(
+    id="Pulse-Particle-2d",
+    entry_point='environments.Particle2D.Particle2D:Particle2D',
+    max_episode_steps=100000
+)

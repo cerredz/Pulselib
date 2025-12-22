@@ -402,7 +402,6 @@ BLACK JACK ENVIRONMENT:
     - actor critic
     - recurrent DQN
 
-
     - DDPG:
         - model-free off policy rl alg designed to handle continuous action spaces
         - learns determinstic policy directly
@@ -413,4 +412,15 @@ BLACK JACK ENVIRONMENT:
         - critic:
             - estimates the q-value pairs
 
-        - 
+        - sample from the replay buffer every train_step
+        - actor, critic, target actor, target critic
+        - soft updates
+        - exploration via generating noise for the action selection
+        - critic gets better at accurately predicting q-values, and then backpropagates this signal to the actor network so that it can select better actions
+            - replay buffer keeps this process stable
+        - actor:
+            input: states
+            output: action 
+        - weights of network are initialized very small to have predictions near zero_grad
+            - gradient clipping for the critic
+        -  

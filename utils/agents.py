@@ -4,15 +4,22 @@ import torch.nn as nn
 import torch.optim as optim
 from pathlib import Path
 from typing import Dict, Optional, Any
-"""
-def get_agent(agent_id: str, env: gym.Env, config: dict):
-    if agent_id == "q_learning":
-        return QLearning(env, config)
-    # elif agent_id == "monte_carlo":
-    #     return OnPolicyFirstVisitMC(...)
-    else:
-        raise ValueError(f"Unknown Agent ID: {agent_id}")
-"""
+import torch
+
+def default_ddpg_actor_critic(env, state_dim):
+    n_actions = env.action_space.n
+
+    actor_network=nn.Sequential(
+        nn.Linear(state_dim, 32), nn.ReLU(), 
+        nn.Linear(32, n_actions), nn.ReLU(), nn.Linear(n_actions, 1)
+    )
+
+    critic_network=nn.Sequential(
+        nn.Linear(state_dim, 32), nn.ReLU(), 
+        nn.Linear(32, 1)
+    )
+
+    return actor_network, critic_network
 
 def default_actor_critic_params(env, state_dim, device=torch.device("cpu")):
     n_actions = env.action_space.n
@@ -66,3 +73,18 @@ def load_weights_path(weights_path, device) -> Optional[Dict[str, Any]] :
         return torch.load(path, map_location=device, weights_only=True)
     
     return None
+
+class OrnsteinUhlenbeckNoise:
+    def __init__(self, size, mu=0., theta=0.15, sigma=0.2, device='cpu'):
+        self.mu = mu * torch.ones(size, device=device)
+        self.theta = theta
+        self.sigma = sigma
+        self.state = torch.zeros(size, device=device)
+        self.device = device
+    
+    def sample(self):
+        self.state += self.theta * (self.mu - self.state) + self.sigma * torch.randn_like(self.state)
+        return self.state
+    
+    def reset(self):
+        self.state.zero_()

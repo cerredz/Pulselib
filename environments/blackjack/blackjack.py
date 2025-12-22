@@ -45,7 +45,6 @@ class BlackJack(gym.Env):
 
         # deal the first cards
         self.deal_starting_cards()
-
         return self.get_obs(), self.get_info()
         
     # deal the starting cards of a blackjack game
