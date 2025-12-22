@@ -1,5 +1,4 @@
-from math import nextafter
-from re import L
+
 import torch
 import torch.nn as nn
 from pathlib import Path
@@ -45,15 +44,16 @@ class DDPG(nn.Module):
         sigma: float = .2,
         tau: float = .001
         ):
+
         super().__init__()
         assert isinstance(actor_network, nn.Module) and isinstance(critic_network, nn.Module), "Both the actor and critic network must be of type nn.Module for the DDPG agent"
         assert isinstance(criterion, nn.Module), "criterion for DDPG agent must be of instance nn.Module"
         assert isinstance(env_action_space, gym.spaces.Box), "DDPG requires a Box action space (use Box(n) in your env)"
         assert state_dim > 0, "state dimensions cannot be negative"
 
-        # config ars
+        # config vars
         self.env_action_space=env_action_space
-        self.action_dim=int(self.env_action_space.n)
+        self.action_dim = self.env_action_space.shape[0]
         self.device = device
         self.learning_rate = float(learning_rate)
         self.weight_decay = float(weight_decay)
@@ -66,8 +66,11 @@ class DDPG(nn.Module):
         self.criterion=criterion
         self.replay_buffer = replay_buffer
         self.tau = tau
-        self.batch_size=batch_size
-        self.step=0
+        self.batch_size = batch_size
+        self.step = 0 
+
+        self.action_low = torch.tensor(env_action_space.low, device=device, dtype=torch.float32)
+        self.action_high = torch.tensor(env_action_space.high, device=device, dtype=torch.float32)
 
         # actor critic networks
         actor_weights=load_weights_path(actor_weights_path, device)
@@ -85,7 +88,7 @@ class DDPG(nn.Module):
         # optimizers + noise      
         self.actor_optimizer=load_optimizer(actor_optimizer, self.actor_network.parameters(), self.learning_rate, self.weight_decay)
         self.critic_optimizer=load_optimizer(critic_optimizer, self.critic_network.parameters(), self.learning_rate, self.weight_decay)
-        self.noise=OrnsteinUhlenbeckNoise(size=(self.batch_size, 1, ), mu=mu, theta=theta, sigma=sigma, device=device) # imeplement more noise options later
+        self.noise=OrnsteinUhlenbeckNoise(size=(self.batch_size, self.action_dim, ), mu=mu, theta=theta, sigma=sigma, device=device) # imeplement more noise options later
 
     def __init_weights(self):
         """Initialize weights according to DDPG paper"""
@@ -105,38 +108,51 @@ class DDPG(nn.Module):
         actions = self.actor_network(states)
         self.actor_network.train()
         actions = actions + self.noise.sample()
-        actions = torch.clamp(actions, min=self.env_action_space.low, max=self.env_action_space.high)
-        return actions.squeeze(1)
+        actions = torch.clamp(actions, min=self.action_low, max=self.action_high)
+        return actions
 
     def train_step(self, states, actions, rewards, next_states, dones):
-        pred_actor=self.actor_network(states)
-        pred_q_critic = self.critic_network(torch.cat([states, pred_actor], dim=1))
+
+        states = states.detach()
+        actions = actions.detach()
+        next_states = next_states.detach()
+        rewards = rewards.detach()
+        dones = dones.detach()
+
+        current_q = self.critic_network(torch.cat([states, actions], dim=1))
+
+        rewards = rewards.view(-1, 1)  # Force [256] -> [256, 1]
+        dones = dones.view(-1, 1)      # Force [256] -> [256, 1]
 
         with torch.no_grad():
             target_actor = self.target_actor_network(next_states)
             target_q_critic = self.target_critic_network(torch.cat([next_states, target_actor], dim=1))
             target = rewards + (1 - dones.float()) * self.gamma * target_q_critic   
-
-            # soft updates
-            self.target_actor_network.weight.data = self.tau * self.actor_network.weight.data + (1 - self.tau) * self.target_actor_network.weight.data
-            self.target_critic_network.weight.data = self.tau * self.critic_network.weight.data + (1 - self.tau) * self.target_critic_network.weight.data
+            
 
         # critic loss
-        critic_loss = self.criterion(pred_q_critic, target)
+        critic_loss = self.criterion(current_q, target)
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
 
         # actor loss
-        actor_loss = -torch.mean(critic_loss)
+        actor_actions = self.actor_network(states)
+        actor_loss = -self.critic_network(torch.cat([states, actor_actions], dim=1)).mean()
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
 
+        # soft updates
+        with torch.no_grad():
+            for tp, p in zip(self.target_actor_network.parameters(), self.actor_network.parameters()):
+                tp.data.lerp_(p.data, self.tau)
+            for tp, p in zip(self.target_critic_network.parameters(), self.critic_network.parameters()):
+                tp.data.lerp_(p.data, self.tau)
 
     # save the network and target network somewhere
-    def save(self, network_save_path, target_save_path):
-        assert Path.exists(network_save_path) and Path.exists(target_save_path)
-
-        torch.save(self.network.state_dict(), network_save_path)
-        torch.save(self.target_network.state_dict(), target_save_path)
+    #def save(self, network_save_path, target_save_path):
+    #    assert Path.exists(network_save_path) and Path.exists(target_save_path)
+    #
+    #    torch.save(self.network.state_dict(), network_save_path)
+    #    torch.save(self.target_network.state_dict(), target_save_path)
