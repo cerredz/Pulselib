@@ -98,10 +98,7 @@ class HeuristicHandsPlayerGPU(Player):
         pair_mask = (rank1 == rank2)
         high_card_mask = (rank1 >= 10) | (rank2 >= 10)  # King or Ace
         raise_mask = (pair_mask | high_card_mask) & ~fold_mask
-
-        n_raises = raise_mask.sum().item()
-        indices = torch.randint(0, 9, (n_raises,), device=self.device)
-        actions[raise_mask] = self.raise_distribution[indices]
+        actions[raise_mask] = self.raise_distribution[torch.randint(0, 9, (n_games,), device=self.device)[raise_mask]]
         return actions
 
     def learn(self): pass
@@ -123,9 +120,7 @@ class TightAggressivePlayerGPU(Player):
         pair_mask=(rank1==rank2)
         high_card_mask = ((rank1 >= 10) & (rank2 > 5)) | ((rank2 >= 10) & (rank1 > 5))        
         raise_mask=(pair_mask | high_card_mask) & ~fold_mask
-        n_raises=raise_mask.sum().item()
-        indices=torch.randint(5, 9, (n_raises,), device=self.device)
-        actions[raise_mask]=self.raise_distribution[indices]
+        actions[raise_mask]=self.raise_distribution[torch.randint(5, 9, (n_games,), device=self.device)[raise_mask]]
         return actions
 
     def learn(self): pass
@@ -149,10 +144,8 @@ class LoosePassivePlayerGPU(Player):
         high_card_mask = ((rank1 >= 11) & (rank2 > 9)) | ((rank2 >= 11) & (rank1 > 9)) 
         call_mask=(pair_mask | high_card_mask) & ~fold_mask
         raise_mask=(probs>.9) & call_mask
-        n_raises = raise_mask.sum().item()
         actions[call_mask]=1
-        indices = torch.randint(0, 4, (n_raises,), device=self.device)        
-        actions[raise_mask]=self.raise_distribution[indices]
+        actions[raise_mask]=self.raise_distribution[torch.randint(0, 4, (n_games,), device=self.device)[raise_mask]]
         return actions
 
     def learn(self): pass
@@ -177,9 +170,7 @@ class SmallBallPlayerGPU(Player):
         pair_mask=(rank1==rank2)
         high_card_mask = ((rank1 >= 10) & (rank2 > 5)) | ((rank2 >= 10) & (rank1 > 5)) 
         raise_mask=(pair_mask | high_card_mask) & ~fold_mask
-        n_raises = raise_mask.sum().item()
-        indices=torch.randint(0, 3, (n_raises, ), device=self.device)
-        actions[raise_mask]=self.raise_distribution[indices]
+        actions[raise_mask]=self.raise_distribution[torch.randint(0, 3, (n_games, ), device=self.device)[raise_mask]]
         return actions
 
     def learn(self): pass
