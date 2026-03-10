@@ -21,7 +21,6 @@ class Game2048Env(gym.Env):
         # FIX 3: Return a COPY to prevent data corruption
         return self.board.copy()
         
-
     def _get_info(self):
         return {"total_score": self.total_score}
 
