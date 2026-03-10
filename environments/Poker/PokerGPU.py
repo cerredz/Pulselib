@@ -351,8 +351,9 @@ class PokerGPU(gym.Env):
         hand_ranks = offsets.view(n_showdown, self.active_players)
         player_status = self.status[showdown_games, :self.active_players]
         eligible_mask = (player_status == self.ACTIVE) | (player_status == self.ALLIN)
-        hand_ranks = torch.where(eligible_mask, hand_ranks, torch.tensor(-1, device=self.device))
-        best_ranks = hand_ranks.min(dim=1, keepdim=True).values  # [n_showdown, 1]
+        # HandRanks.dat returns larger values for stronger showdown hands.
+        hand_ranks = hand_ranks.masked_fill(~eligible_mask, torch.iinfo(hand_ranks.dtype).min)
+        best_ranks = hand_ranks.max(dim=1, keepdim=True).values  # [n_showdown, 1]
         winner_mask = (hand_ranks == best_ranks)  # [n_showdown, active_players] - True for winners
     
         # Count winners per game (for split pots)
