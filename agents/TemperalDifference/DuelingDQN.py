@@ -8,12 +8,7 @@ import torch.optim as optim
 import gymnasium as gym
 from typing import Optional
 
-# an implementation of a reusable deep neural network that predicts q-values for reinforcement learning environemnts
-# goal is to make it abstract enough to basically just plug into different training scripts
-
-# can load in a weights file, can pass in the network, target network, optimizer, and loss function
-
-class DQN(nn.Module):
+class DuelingDQN(nn.Module):
     def __init__(
         self,
         env_action_space: gym.spaces.Space,
@@ -57,6 +52,10 @@ class DQN(nn.Module):
         self.optimizer=optimizer
         self.state_dim=state_dim
         self.criterion=criterion
+        hidden_layer_size = self._get_hidden_layer_size()
+        self.value_stream = nn.Linear(hidden_layer_size, 1).to(device)
+        self.advantage_stream = nn.Linear(hidden_layer_size, self.action_dim).to(device)
+        self.step=0
 
         if optimizer == None:
             # default optimizer, AdamW
@@ -71,15 +70,22 @@ class DQN(nn.Module):
             if target_network is None:
                 self.target_network=copy.deepcopy(self.network)
 
-        if target_network is not None:
-            self.target_network = target_network.to(device)
-        else:
-            self.target_network=copy.deepcopy(self.network).to(self.device)
+        self.target_network = copy.deepcopy(self.network).to(self.device) if not target_network else target_network.to(device)
 
-        self.step=0
+    # utility function to read the passed in network and build the adantage function layer for the 
+    # DoubleDQN network (need to get the size of the last hidden layer in the passed in network)
+    def _get_hidden_layer_size(self):
+        """Utility function to get the output size of the last layer in the network"""
+        linear_layers = [module for module in self.network.modules() if isinstance(module, nn.Linear)]
+        if not linear_layers:
+            raise ValueError("Network must contain at least one Linear layer")
+        return linear_layers[-1].out_features
 
     def forward(self, states):
-        return self.network(states)
+        hidden = self.network(states)
+        v = self.value_stream(hidden)
+        a = self.advantage_function(hidden)
+        return v + (a - a.mean(dim=1, keepdim=True))
 
     def decay_epsilon(self):
         self.epsilon=max(self.epsilon_min, self.epsilon * self.epsilon_decay)
@@ -90,21 +96,18 @@ class DQN(nn.Module):
         explore_mask=(probs < self.epsilon)
         e_greedy_actions=torch.randint(0, self.action_dim, (states.shape[0],), device=self.device, dtype=torch.int64)
         
-        self.network.eval()
+        self.eval()
         with torch.inference_mode():
-            q_values=self.network(states)
+            q_values=self(states)
             q_value_actions=torch.argmax(q_values, dim=-1)
 
         actions=torch.where(explore_mask, e_greedy_actions, q_value_actions)
-        self.network.train()
+        self.train()
         return actions
 
     def train_step(self, states, actions, rewards, next_states, dones):
-        states=states.float()
-        next_states=next_states.float()
-
         all_q_values=self.forward(states)
-        pred_q = all_q_values.gather(1, actions.unsqueeze(-1)).squeeze(-1)  # Shape: (batch_size,)
+        pred_q = all_q_values.gather(1, actions.unsqueeze(-1)).squeeze(-1)
         
         with torch.no_grad():
             q_values_next=self.target_network(next_states)
@@ -129,3 +132,6 @@ class DQN(nn.Module):
 
         torch.save(self.network.state_dict(), network_save_path)
         torch.save(self.target_network.state_dict(), target_save_path)
+
+    def __repr__(self):
+        pass
