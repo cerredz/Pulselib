@@ -20,6 +20,19 @@ POKER_ACTION_SPACE_N = 13
 ENV_NAME = "Pulse-Poker-GPU-v1"
 
 
+def _get_active_q_mask(terminated: torch.Tensor, q_mask: torch.Tensor) -> torch.Tensor:
+    return q_mask & ~terminated
+
+
+def _should_stop_loop(
+    step_idx: int,
+    terminated: torch.Tensor,
+    termination_threshold: torch.Tensor,
+    check_interval: int = 5,
+) -> bool:
+    return step_idx % check_interval == 0 and bool(terminated.float().mean() > termination_threshold)
+
+
 def train_agent(
     env: gym.Env,
     agents,
@@ -38,10 +51,15 @@ def train_agent(
     start_time = time.time()
     scores, reward_scores = [], []
     actions = torch.zeros(n_games, dtype=torch.long, device=device)
+    q_agent_idx = agent_types.index(PokerAgentType.QLEARNING)
+    q_agent = agents[q_agent_idx]
 
     for episode in range(episodes):
         rotated_agents, rotated_types, q_seat, rotations = get_rotated_agents(
-            agents, agent_types, episode_idx=episode
+            agents,
+            agent_types,
+            episode_idx=episode,
+            q_agent_idx=q_agent_idx,
         )
 
         state, info = env.reset(
@@ -63,21 +81,22 @@ def train_agent(
             q_mask = info["seat_idx"] == q_seat
             build_actions(state, actions, info["seat_idx"], rotated_agents, rotated_types, device)
             next_state, rewards, dones, truncated, info = env.step(actions)
-            terminated_before = terminated.clone()
+            del truncated
+            active_games = q_mask & ~terminated  # [n_games]
             terminated |= dones
-            active_games = q_mask & ~terminated_before
-            agents[agent_types.index(PokerAgentType.QLEARNING)].train_step(
-                states=state[active_games],
-                actions=actions[active_games],
-                rewards=rewards[active_games],
-                next_states=next_state[active_games],
-                dones=dones[active_games],
-            )
+            if active_games.any():
+                q_agent.train_step(
+                    states=state[active_games],
+                    actions=actions[active_games],
+                    rewards=rewards[active_games],
+                    next_states=next_state[active_games],
+                    dones=dones[active_games],
+                )
 
             episode_reward_tensor += rewards[active_games].sum()
             state = next_state
 
-            if idx % 5 == 0 and terminated.float().mean() > termination_threshold:
+            if _should_stop_loop(idx, terminated, termination_threshold):
                 break
             idx += 1
 
@@ -98,8 +117,7 @@ def train_agent(
                 f"Speed: {steps_per_sec:6.1f} steps/sec"
             )
 
-    q_net = next(agent for agent in agents if isinstance(agent, PokerQNetwork))
-    torch.save(q_net.network.state_dict(), f"{results_dir}/poker_qnet_final.pth")
+    torch.save(q_agent.network.state_dict(), f"{results_dir}/poker_qnet_final.pth")
     reward_path = results_dir / REWARDS_FILENAME
     chips_path = results_dir / CHIPS_FILENAME
     end_time = time.time()
