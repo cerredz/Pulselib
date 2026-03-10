@@ -193,7 +193,7 @@ class PokerGPU(gym.Env):
     def execute_actions(self, actions):
         # executes the actions from the actions tensor for each of the current players
         call_costs=self.highest-(self.current_round_bet[self.g, self.idx])
-        active_mask=(self.status[self.g, self.idx] != self.FOLDED) & (self.status[self.g, self.idx] != self.ALLIN) & (self.status[self.g, self.idx] != self.SITOUT)
+        active_mask=(self.status[self.g, self.idx] != self.FOLDED) & (self.status[self.g, self.idx] != self.ALLIN) & (self.status[self.g, self.idx] != self.SITOUT) & (~self.is_done)
 
         # fold
         fold_mask=(actions==0) & active_mask
@@ -449,6 +449,7 @@ class PokerGPU(gym.Env):
     def step(self, actions):
         # step function to handle logic of n_games actions at once
         # get game indices ready
+        prev_done = self.is_done.clone()
         self.prev_stacks.copy_(self.stacks[self.g, self.idx])
         self.prev_invested.copy_(self.current_round_bet[self.g, self.idx])
 
@@ -464,7 +465,7 @@ class PokerGPU(gym.Env):
         # 3) find next player to act in current round
         next_player_idx=self.idx.clone()
         self.is_round_over.fill_(False)
-        self.is_round_over[all_allin_or_folded]=True
+        self.is_round_over[self.is_done | all_allin_or_folded]=True
         self.searching[:]=~self.is_round_over
 
         # NOTE: need way to parallelize the below code, eliminate this ugly for loop
@@ -491,7 +492,7 @@ class PokerGPU(gym.Env):
         early_term=(active_counts <= 1)&self.is_round_over
         self.is_done[early_term]=True
 
-        transition_mask=self.is_round_over&~early_term
+        transition_mask=self.is_round_over&~early_term&~self.is_done
         self.last_raise_size[transition_mask] = 1
         if transition_mask.any():
             g_over=self.g[transition_mask]
@@ -526,8 +527,11 @@ class PokerGPU(gym.Env):
             self.board[street_games, 4] = self.deal_cards(street_games, 1).squeeze(1)
 
         # 4) resolve fold winners, resolve games that are over with more than 1 active player currently
+        all_done_mask = self.is_done.clone()
+        self.is_done = all_done_mask & ~prev_done
         self.resolve_fold_winners()
         self.resolve_terminated_games()
+        self.is_done = all_done_mask
 
         all_done = self.is_done[self.g]
         self.current_round_bet[self.g[all_done], :]=0
@@ -536,4 +540,5 @@ class PokerGPU(gym.Env):
         
         # 5) Calculate the actual reward
         rewards = self.poker_reward_gpu(actions=actions)
+        rewards[prev_done] = 0
         return self.get_obs(), rewards, self.is_done, self.is_truncated, self.get_info()

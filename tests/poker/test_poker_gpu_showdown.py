@@ -75,3 +75,21 @@ def test_resolve_terminated_games_splits_tied_even_pot():
     assert env.stacks[0].tolist() == [22, 32]
     assert env.pots[0].item() == 0
     assert env.stages[0].item() == 5
+
+
+def test_step_does_not_mutate_terminal_games():
+    env = _build_env(n_players=3)
+    before_status = env.status.clone()
+    before_stacks = env.stacks.clone()
+    before_idx = env.idx.clone()
+    before_pots = env.pots.clone()
+    before_stages = env.stages.clone()
+
+    env.is_done[:] = True
+    env.step(torch.tensor([12], dtype=torch.long))
+
+    assert torch.equal(env.status, before_status)
+    assert torch.equal(env.stacks, before_stacks)
+    assert torch.equal(env.idx, before_idx)
+    assert torch.equal(env.pots, before_pots)
+    assert torch.equal(env.stages, before_stages)
