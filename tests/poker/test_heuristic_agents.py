@@ -72,6 +72,31 @@ def run_build_actions_benchmark(n_games: int = 100_000, iters: int = 20) -> floa
     return ms
 
 
+def run_step_benchmark(n_games: int = 100_000, iters: int = 20) -> float:
+    device, _, _, env = _load_training_stack(n_games=n_games)
+    env.reset(options={"rotation": 0, "active_players": True, "q_agent_seat": 0})
+    actions = torch.ones(n_games, dtype=torch.long, device=device)
+
+    for _ in range(5):
+        env.step(actions)
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+
+    elapsed = 0.0
+    for _ in range(iters):
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        start = time.perf_counter()
+        env.step(actions)
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        elapsed += time.perf_counter() - start
+
+    ms = elapsed * 1000 / iters
+    print(f"step_only_ms={ms:.3f}")
+    return ms
+
+
 def test_training_stack_builds_valid_heuristic_actions():
     device, agents, agent_types, env = _load_training_stack(n_games=2048)
     state, info = env.reset(options={"rotation": 0, "active_players": True, "q_agent_seat": 0})
@@ -84,3 +109,7 @@ def test_training_stack_builds_valid_heuristic_actions():
 
 def test_heuristic_action_benchmark_smoke():
     assert run_build_actions_benchmark() > 0
+
+
+def test_step_benchmark_smoke():
+    assert run_step_benchmark() > 0

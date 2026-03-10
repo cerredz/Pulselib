@@ -127,7 +127,7 @@ class PokerGPU(gym.Env):
         self.equities=torch.full((self.n_games, self.active_players), .5, device=self.device, dtype=torch.float32)
         self.prev_stacks=torch.zeros(self.n_games, device=self.device, dtype=torch.int32)
         self.prev_invested=torch.zeros(self.n_games, device=self.device, dtype=torch.int32)
-        self.active_player_idx=torch.arange(self.active_players, device=self.device)
+        self.active_player_idx=torch.arange(self.active_players, device=self.device, dtype=torch.int32)
         self.s=torch.zeros(self.n_games, device=self.device, dtype=torch.float32)
         self.obs=torch.zeros((self.n_games, self.obs_size), device=self.device)
         self.o=torch.arange(1, self.max_players-1, device=self.device)
@@ -461,31 +461,30 @@ class PokerGPU(gym.Env):
         self.execute_actions(actions)
         truly_active = ((self.status == self.ACTIVE)).sum(dim=1)
         all_allin_or_folded = (truly_active == 0)
+        all_acted = (self.acted >= truly_active)
 
         # 3) find next player to act in current round
-        next_player_idx=self.idx.clone()
         self.is_round_over.fill_(False)
         self.is_round_over[self.is_done | all_allin_or_folded]=True
-        self.searching[:]=~self.is_round_over
+        candidate_offsets = self.active_player_idx + 1
+        candidate_seats = (self.idx.unsqueeze(1) + candidate_offsets.unsqueeze(0)) % self.active_players
+        candidate_status = self.status[self.g.unsqueeze(1), candidate_seats]
+        eligible_candidates = candidate_status == self.ACTIVE
 
-        # NOTE: need way to parallelize the below code, eliminate this ugly for loop
-        for _ in range(self.active_players):
-            next_player_idx[self.searching]=(next_player_idx[self.searching]+1)%self.active_players
-            # round over check
-            back_to_agg=(next_player_idx==self.agg)
-            truly_active_counts = (self.status == self.ACTIVE).sum(dim=1)  # FIXED
-            all_acted=(self.acted >= truly_active_counts)
-            round_over=back_to_agg & all_acted & self.searching
-            self.is_round_over |= round_over
-            self.searching[round_over]=False
+        agg_positions = (candidate_seats == self.agg.unsqueeze(1)).to(torch.int64).argmax(dim=1)
+        before_agg = self.active_player_idx.unsqueeze(0) < agg_positions.unsqueeze(1)
 
-            # still eligible player left check
-            player_status=self.status[self.g, next_player_idx]
-            is_eligible=((player_status==self.ACTIVE)) & self.searching
-            self.searching[is_eligible]=False
+        # Preserve the existing scan order: once every active seat has acted, the round
+        # ends when the scan reaches the aggressor before selecting that seat to act.
+        selectable_candidates = eligible_candidates & ((~all_acted).unsqueeze(1) | before_agg)
+        has_next_player = selectable_candidates.any(dim=1)
+        next_positions = selectable_candidates.to(torch.int64).argmax(dim=1)
+        unresolved_rounds = ~self.is_round_over
+        self.is_round_over |= unresolved_rounds & all_acted & ~has_next_player
 
-        no_over_mask=~self.is_round_over
-        self.idx[no_over_mask]=next_player_idx[no_over_mask]
+        continue_mask = ~self.is_round_over & has_next_player
+        if continue_mask.any():
+            self.idx[continue_mask] = candidate_seats[continue_mask, next_positions[continue_mask]]
     
         # 3) handle round transitions & game ends
         active_counts=((self.status == self.ACTIVE) | (self.status == self.ALLIN)).sum(dim=1)
