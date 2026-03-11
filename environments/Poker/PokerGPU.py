@@ -190,6 +190,20 @@ class PokerGPU(gym.Env):
         cards = self.decks[g.unsqueeze(1), card_idx]
         self.deck_positions[g] += n_cards
         return cards.to(torch.int32)
+    def _set_first_active_street_actor(self, game_mask: torch.Tensor) -> None:
+        if not game_mask.any():
+            return
+
+        games = self.g[game_mask]
+        candidate_offsets = self.active_player_idx + 1
+        # [G, P]: scan from the seat immediately left of the button for each transitioned game.
+        candidate_seats = (self.button[game_mask].unsqueeze(1) + candidate_offsets.unsqueeze(0)) % self.active_players
+        candidate_status = self.status[games.unsqueeze(1), candidate_seats]
+        active_candidates = candidate_status == self.ACTIVE
+        has_active = active_candidates.any(dim=1)
+        if has_active.any():
+            first_positions = active_candidates.to(torch.int64).argmax(dim=1)
+            self.idx[games[has_active]] = candidate_seats[has_active, first_positions[has_active]]
 
     def execute_actions(self, actions):
         # executes the actions from the actions tensor for each of the current players
@@ -501,6 +515,7 @@ class PokerGPU(gym.Env):
             self.agg[transition_mask] = (self.button[transition_mask] + 1) % self.active_players
             self.acted[transition_mask] = 0
             self.current_round_bet[g_over, :]=0
+            self._set_first_active_street_actor(transition_mask)
 
             flop_mask = (self.stages[transition_mask] == 1)
             turn_mask = (self.stages[transition_mask] == 2)
