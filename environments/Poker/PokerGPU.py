@@ -310,8 +310,19 @@ class PokerGPU(gym.Env):
         #multiple_players_2 = (self.stages[self.g] == self.ACTIVE).int() + (self.stages[self.g] == self.ALLIN).int() > 1
 
         if not multiple_players.any(): return
+        preflop_mask = (self.stages[g_res] == 0) & multiple_players
         flop_mask = (self.stages[g_res] == 1) & multiple_players
         turn_mask = (self.stages[g_res] == 2) & multiple_players
+        preflop_games = g_res[preflop_mask]
+        self.deck_positions[preflop_games] += 1  # burn
+        self.board[preflop_games, 0:3] = self.deal_cards(preflop_games, 3)
+        self.deck_positions[preflop_games] += 1  # burn
+        turn_cards = self.deal_cards(preflop_games, 1)
+        self.board[preflop_games, 3] = turn_cards.squeeze(1)
+        self.deck_positions[preflop_games] += 1  # burn
+        river_cards = self.deal_cards(preflop_games, 1)
+        self.board[preflop_games, 4] = river_cards.squeeze(1)
+
         flop_games = g_res[flop_mask]
 
         self.deck_positions[flop_games] += 1  # burn
