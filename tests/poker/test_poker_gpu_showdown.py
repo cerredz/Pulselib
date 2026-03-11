@@ -29,6 +29,7 @@ def test_resolve_terminated_games_pays_strongest_active_hand():
     env.hands[0, 1] = torch.tensor([_encode("3c"), _encode("4d")], dtype=torch.int32)
     env.status[0] = torch.tensor([env.ACTIVE, env.ACTIVE], dtype=torch.int32)
     env.stacks[0] = torch.tensor([50, 50], dtype=torch.int32)
+    env.total_invested[0] = torch.tensor([20, 20], dtype=torch.int32)
     env.pots[0] = torch.tensor(40, dtype=torch.int32)
     env.stages[0] = torch.tensor(4, dtype=torch.int32)
     env.is_done[0] = True
@@ -48,6 +49,7 @@ def test_resolve_terminated_games_excludes_folded_players_from_winning():
     env.hands[0, 2] = torch.tensor([_encode("4c"), _encode("4d")], dtype=torch.int32)
     env.status[0] = torch.tensor([env.ACTIVE, env.ACTIVE, env.FOLDED], dtype=torch.int32)
     env.stacks[0] = torch.tensor([100, 100, 100], dtype=torch.int32)
+    env.total_invested[0] = torch.tensor([30, 30, 30], dtype=torch.int32)
     env.pots[0] = torch.tensor(90, dtype=torch.int32)
     env.stages[0] = torch.tensor(4, dtype=torch.int32)
     env.is_done[0] = True
@@ -66,6 +68,7 @@ def test_resolve_terminated_games_splits_tied_even_pot():
     env.hands[0, 1] = torch.tensor([_encode("2d"), _encode("3c")], dtype=torch.int32)
     env.status[0] = torch.tensor([env.ACTIVE, env.ACTIVE], dtype=torch.int32)
     env.stacks[0] = torch.tensor([10, 20], dtype=torch.int32)
+    env.total_invested[0] = torch.tensor([12, 12], dtype=torch.int32)
     env.pots[0] = torch.tensor(24, dtype=torch.int32)
     env.stages[0] = torch.tensor(4, dtype=torch.int32)
     env.is_done[0] = True

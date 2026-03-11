@@ -296,6 +296,41 @@ class PokerGPU(gym.Env):
         self.stacks[gg, survivor] += self.pots[gg]
         self.pots[gg]=0
 
+    def _award_showdown_side_pots(
+        self,
+        showdown_games: torch.Tensor,
+        hand_ranks: torch.Tensor,
+        eligible_mask: torch.Tensor,
+    ) -> None:
+        invested = self.total_invested[showdown_games, :self.active_players]  # [n_showdown, active_players]
+        seats = torch.arange(self.active_players, device=self.device)
+        min_rank = torch.iinfo(hand_ranks.dtype).min
+
+        for local_idx, game_idx in enumerate(showdown_games.tolist()):
+            game_invested = invested[local_idx]
+            prior_level = 0
+
+            for level in torch.unique(game_invested[game_invested > 0], sorted=True).tolist():
+                layer_size = level - prior_level
+                prior_level = level
+                if layer_size <= 0:
+                    continue
+
+                contributor_mask = game_invested >= level  # [active_players]
+                layer_pot = int(contributor_mask.sum().item()) * layer_size
+                layer_eligible = contributor_mask & eligible_mask[local_idx]
+                if layer_pot == 0 or not layer_eligible.any():
+                    continue
+
+                layer_ranks = hand_ranks[local_idx].masked_fill(~layer_eligible, min_rank)  # [active_players]
+                winner_mask = layer_eligible & (hand_ranks[local_idx] == layer_ranks.max())
+                winner_seats = seats[winner_mask]
+                share = layer_pot // winner_seats.numel()
+                remainder = layer_pot % winner_seats.numel()
+                self.stacks[game_idx, winner_seats] += share
+                if remainder:
+                    self.stacks[game_idx, winner_seats[0]] += remainder
+
     def resolve_terminated_games(self):
         # resolves the terminated games
         # games can either be terminated post-river or terminated 'early' where there are no players left to act
@@ -353,16 +388,7 @@ class PokerGPU(gym.Env):
         eligible_mask = (player_status == self.ACTIVE) | (player_status == self.ALLIN)
         # HandRanks.dat returns larger values for stronger showdown hands.
         hand_ranks = hand_ranks.masked_fill(~eligible_mask, torch.iinfo(hand_ranks.dtype).min)
-        best_ranks = hand_ranks.max(dim=1, keepdim=True).values  # [n_showdown, 1]
-        winner_mask = (hand_ranks == best_ranks)  # [n_showdown, active_players] - True for winners
-    
-        # Count winners per game (for split pots)
-        num_winners = winner_mask.sum(dim=1)  # [n_showdown]
-    
-        # Distribute pot to winners
-        pots = self.pots[showdown_games].unsqueeze(1)  # [n_showdown, 1]
-        winnings = (pots * winner_mask.float()) / num_winners.unsqueeze(1)  # [n_showdown, active_players]
-        self.stacks[showdown_games.unsqueeze(1), torch.arange(self.active_players, device=self.device)] += winnings.to(torch.int32)
+        self._award_showdown_side_pots(showdown_games, hand_ranks, eligible_mask)
         self.pots[showdown_games] = 0
         self.stages[showdown_games] = 5
 
