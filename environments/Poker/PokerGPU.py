@@ -190,6 +190,7 @@ class PokerGPU(gym.Env):
         cards = self.decks[g.unsqueeze(1), card_idx]
         self.deck_positions[g] += n_cards
         return cards.to(torch.int32)
+
     def _set_first_active_street_actor(self, game_mask: torch.Tensor) -> None:
         if not game_mask.any():
             return
@@ -276,7 +277,7 @@ class PokerGPU(gym.Env):
             actual_raise_sizes = new_bets - old_highest
             self.last_raise_size[pure_raise_indices] = actual_raise_sizes
 
-    def poker_reward_gpu(self, actions):
+    def poker_reward_gpu(self, actions: torch.Tensor, actor_idx: torch.Tensor) -> torch.Tensor:
         self.s.fill_(0)
         #investments = self.prev_stacks - self.stacks[self.g, self.idx]
         #stack_changes = self.stacks[self.g, self.idx] - self.prev_stacks
@@ -284,8 +285,8 @@ class PokerGPU(gym.Env):
         fair_shares = 1.0 / torch.clamp(active_counts, min=1.0)
         call_costs = torch.maximum(torch.zeros_like(self.highest), self.highest - self.prev_invested)
         
-        # first part of reward function, promote higher equities with bigger pots
-        e = self.equities[self.g, self.idx]
+        # [n_games]: reward attribution must stay tied to the acting seat captured pre-mutation.
+        e = self.equities[self.g, actor_idx]
         m = e * self.pots
         o = call_costs / (self.pots + call_costs + 1e-6)
 
@@ -311,6 +312,41 @@ class PokerGPU(gym.Env):
         self.stacks[gg, survivor] += self.pots[gg]
         self.pots[gg]=0
 
+    def _award_showdown_side_pots(
+        self,
+        showdown_games: torch.Tensor,
+        hand_ranks: torch.Tensor,
+        eligible_mask: torch.Tensor,
+    ) -> None:
+        invested = self.total_invested[showdown_games, :self.active_players]  # [n_showdown, active_players]
+        seats = torch.arange(self.active_players, device=self.device)
+        min_rank = torch.iinfo(hand_ranks.dtype).min
+
+        for local_idx, game_idx in enumerate(showdown_games.tolist()):
+            game_invested = invested[local_idx]
+            prior_level = 0
+
+            for level in torch.unique(game_invested[game_invested > 0], sorted=True).tolist():
+                layer_size = level - prior_level
+                prior_level = level
+                if layer_size <= 0:
+                    continue
+
+                contributor_mask = game_invested >= level  # [active_players]
+                layer_pot = int(contributor_mask.sum().item()) * layer_size
+                layer_eligible = contributor_mask & eligible_mask[local_idx]
+                if layer_pot == 0 or not layer_eligible.any():
+                    continue
+
+                layer_ranks = hand_ranks[local_idx].masked_fill(~layer_eligible, min_rank)  # [active_players]
+                winner_mask = layer_eligible & (hand_ranks[local_idx] == layer_ranks.max())
+                winner_seats = seats[winner_mask]
+                share = layer_pot // winner_seats.numel()
+                remainder = layer_pot % winner_seats.numel()
+                self.stacks[game_idx, winner_seats] += share
+                if remainder:
+                    self.stacks[game_idx, winner_seats[0]] += remainder
+
     def resolve_terminated_games(self):
         # resolves the terminated games
         # games can either be terminated post-river or terminated 'early' where there are no players left to act
@@ -325,10 +361,20 @@ class PokerGPU(gym.Env):
         #multiple_players_2 = (self.stages[self.g] == self.ACTIVE).int() + (self.stages[self.g] == self.ALLIN).int() > 1
 
         if not multiple_players.any(): return
+        preflop_mask = (self.stages[g_res] == 0) & multiple_players
         flop_mask = (self.stages[g_res] == 1) & multiple_players
         turn_mask = (self.stages[g_res] == 2) & multiple_players
-        flop_games = g_res[flop_mask]
+        preflop_games = g_res[preflop_mask]
+        self.deck_positions[preflop_games] += 1  # burn
+        self.board[preflop_games, 0:3] = self.deal_cards(preflop_games, 3)
+        self.deck_positions[preflop_games] += 1  # burn
+        turn_cards = self.deal_cards(preflop_games, 1)
+        self.board[preflop_games, 3] = turn_cards.squeeze(1)
+        self.deck_positions[preflop_games] += 1  # burn
+        river_cards = self.deal_cards(preflop_games, 1)
+        self.board[preflop_games, 4] = river_cards.squeeze(1)
 
+        flop_games = g_res[flop_mask]
         self.deck_positions[flop_games] += 1  # burn
         turn_cards = self.deal_cards(flop_games, 1)
         self.board[flop_games, 3] = turn_cards.squeeze(1) 
@@ -368,16 +414,7 @@ class PokerGPU(gym.Env):
         eligible_mask = (player_status == self.ACTIVE) | (player_status == self.ALLIN)
         # HandRanks.dat returns larger values for stronger showdown hands.
         hand_ranks = hand_ranks.masked_fill(~eligible_mask, torch.iinfo(hand_ranks.dtype).min)
-        best_ranks = hand_ranks.max(dim=1, keepdim=True).values  # [n_showdown, 1]
-        winner_mask = (hand_ranks == best_ranks)  # [n_showdown, active_players] - True for winners
-    
-        # Count winners per game (for split pots)
-        num_winners = winner_mask.sum(dim=1)  # [n_showdown]
-    
-        # Distribute pot to winners
-        pots = self.pots[showdown_games].unsqueeze(1)  # [n_showdown, 1]
-        winnings = (pots * winner_mask.float()) / num_winners.unsqueeze(1)  # [n_showdown, active_players]
-        self.stacks[showdown_games.unsqueeze(1), torch.arange(self.active_players, device=self.device)] += winnings.to(torch.int32)
+        self._award_showdown_side_pots(showdown_games, hand_ranks, eligible_mask)
         self.pots[showdown_games] = 0
         self.stages[showdown_games] = 5
 
@@ -465,8 +502,15 @@ class PokerGPU(gym.Env):
         # step function to handle logic of n_games actions at once
         # get game indices ready
         prev_done = self.is_done.clone()
-        self.prev_stacks.copy_(self.stacks[self.g, self.idx])
-        self.prev_invested.copy_(self.current_round_bet[self.g, self.idx])
+        actor_idx = self.idx.clone()
+        has_legal_actor = (
+            (self.status[self.g, actor_idx] != self.FOLDED)
+            & (self.status[self.g, actor_idx] != self.ALLIN)
+            & (self.status[self.g, actor_idx] != self.SITOUT)
+            & (~prev_done)
+        )
+        self.prev_stacks.copy_(self.stacks[self.g, actor_idx])
+        self.prev_invested.copy_(self.current_round_bet[self.g, actor_idx])
 
         # 1) calculate the equties of players hands
         self.equities.fill_(.5)
@@ -554,6 +598,6 @@ class PokerGPU(gym.Env):
         self.highest[self.g[all_done]]=0        
         
         # 5) Calculate the actual reward
-        rewards = self.poker_reward_gpu(actions=actions)
-        rewards[prev_done] = 0
+        rewards = self.poker_reward_gpu(actions=actions, actor_idx=actor_idx)
+        rewards[~has_legal_actor | prev_done] = 0
         return self.get_obs(), rewards, self.is_done, self.is_truncated, self.get_info()
