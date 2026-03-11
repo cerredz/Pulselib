@@ -95,6 +95,40 @@ def test_step_closes_multiway_preflop_after_big_blind_checks_option():
     assert torch.all(env.board[0, 0:3] > 0)
 
 
+def test_step_closes_multiway_postflop_checkaround_and_advances_to_turn():
+    env = _build_env(n_players=4)
+
+    for _ in range(4):
+        _, _, dones, _, _ = env.step(torch.tensor([1], dtype=torch.long))
+        assert not dones[0].item()
+
+    assert env.stages[0].item() == 1
+    assert env.idx[0].item() == 1
+
+    for _ in range(4):
+        _, _, dones, _, info = env.step(torch.tensor([1], dtype=torch.long))
+        assert not dones[0].item()
+
+    assert env.stages[0].item() == 2
+    assert env.idx[0].item() == 1
+    assert info["seat_idx"][0].item() == 1
+    assert env.current_round_bet[0].tolist() == [0, 0, 0, 0]
+    assert env.board[0, 3].item() > 0
+
+
+def test_step_sets_heads_up_postflop_opener_to_first_active_seat_left_of_button():
+    env = _build_env(n_players=2)
+
+    for _ in range(2):
+        _, _, dones, _, info = env.step(torch.tensor([1], dtype=torch.long))
+        assert not dones[0].item()
+
+    assert env.stages[0].item() == 1
+    assert env.button[0].item() == 0
+    assert env.idx[0].item() == 1
+    assert info["seat_idx"][0].item() == 1
+
+
 def test_step_reward_uses_acting_seat_equity_before_turn_advances():
     env = _build_env(n_players=3)
     env.w1 = torch.tensor(1.0, device=env.device, dtype=torch.float32)
