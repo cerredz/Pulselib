@@ -320,6 +320,46 @@ class PokerGPU(gym.Env):
         self.stacks[gg, survivor] += self.pots[gg]
         self.pots[gg]=0
 
+    def _award_showdown_side_pots(
+        self,
+        showdown_games: torch.Tensor,
+        hand_ranks: torch.Tensor,
+        eligible_mask: torch.Tensor,
+    ) -> None:
+        invested = self.total_invested[showdown_games, :self.active_players]  # [n_showdown, active_players]
+        sorted_invested, _ = invested.sort(dim=1)  # [n_showdown, active_players]
+        previous_levels = torch.cat(
+            [torch.zeros((sorted_invested.shape[0], 1), dtype=sorted_invested.dtype, device=self.device), sorted_invested[:, :-1]],
+            dim=1,
+        )  # [n_showdown, active_players]
+        layer_sizes = sorted_invested - previous_levels  # [n_showdown, active_players]
+        contributor_mask = invested.unsqueeze(1) >= sorted_invested.unsqueeze(2)  # [n_showdown, active_players, active_players]
+        eligible_layers = contributor_mask & eligible_mask.unsqueeze(1)  # [n_showdown, active_players, active_players]
+        min_rank = torch.iinfo(hand_ranks.dtype).min
+        layer_ranks = hand_ranks.unsqueeze(1).masked_fill(~eligible_layers, min_rank)  # [n_showdown, active_players, active_players]
+        best_layer_ranks = layer_ranks.max(dim=2).values  # [n_showdown, active_players]
+        winner_mask = eligible_layers & (hand_ranks.unsqueeze(1) == best_layer_ranks.unsqueeze(2))  # [n_showdown, active_players, active_players]
+        layer_contributors = contributor_mask.sum(dim=2).to(layer_sizes.dtype)  # [n_showdown, active_players]
+        layer_pots = layer_sizes * layer_contributors  # [n_showdown, active_players]
+        winner_counts = winner_mask.sum(dim=2).to(layer_pots.dtype)  # [n_showdown, active_players]
+        valid_layers = (layer_sizes > 0) & (winner_counts > 0)  # [n_showdown, active_players]
+        safe_winner_counts = winner_counts.clamp_min(1)  # [n_showdown, active_players]
+        layer_shares = torch.where(
+            valid_layers,
+            torch.div(layer_pots, safe_winner_counts, rounding_mode='floor'),
+            torch.zeros_like(layer_pots),
+        )  # [n_showdown, active_players]
+        layer_remainders = torch.where(
+            valid_layers,
+            torch.remainder(layer_pots, safe_winner_counts),
+            torch.zeros_like(layer_pots),
+        )  # [n_showdown, active_players]
+        payouts = winner_mask.to(layer_pots.dtype) * layer_shares.unsqueeze(2)  # [n_showdown, active_players, active_players]
+        first_winner = winner_mask.to(torch.int64).argmax(dim=2, keepdim=True)  # [n_showdown, active_players, 1]
+        payouts.scatter_add_(2, first_winner, layer_remainders.unsqueeze(2))  # [n_showdown, active_players, active_players]
+        total_payouts = payouts.sum(dim=1).to(self.stacks.dtype)  # [n_showdown, active_players]
+        self.stacks[showdown_games.unsqueeze(1), torch.arange(self.active_players, device=self.device)] += total_payouts
+
     def resolve_terminated_games(self):
         # resolves the terminated games
         # games can either be terminated post-river or terminated 'early' where there are no players left to act
@@ -334,8 +374,18 @@ class PokerGPU(gym.Env):
         #multiple_players_2 = (self.stages[self.g] == self.ACTIVE).int() + (self.stages[self.g] == self.ALLIN).int() > 1
 
         if not multiple_players.any(): return
+        preflop_mask = (self.stages[g_res] == 0) & multiple_players
         flop_mask = (self.stages[g_res] == 1) & multiple_players
         turn_mask = (self.stages[g_res] == 2) & multiple_players
+        preflop_games = g_res[preflop_mask]
+        self.deck_positions[preflop_games] += 1  # burn
+        self.board[preflop_games, 0:3] = self.deal_cards(preflop_games, 3)
+        self.deck_positions[preflop_games] += 1  # burn
+        turn_cards = self.deal_cards(preflop_games, 1)
+        self.board[preflop_games, 3] = turn_cards.squeeze(1)
+        self.deck_positions[preflop_games] += 1  # burn
+        river_cards = self.deal_cards(preflop_games, 1)
+        self.board[preflop_games, 4] = river_cards.squeeze(1)
         flop_games = g_res[flop_mask]
 
         self.deck_positions[flop_games] += 1  # burn
@@ -367,26 +417,20 @@ class PokerGPU(gym.Env):
         batch_size = n_showdown * self.active_players
         hands_flat = hands_7.view(batch_size, 7)
         offsets = torch.full((batch_size,), 53, dtype=torch.int32, device=self.device)
-    
-        for card_idx in range(7):
-            indices = offsets + hands_flat[:, card_idx]
-            offsets = self.hand_ranks[indices]
+        offsets = self.hand_ranks[offsets + hands_flat[:, 0]]
+        offsets = self.hand_ranks[offsets + hands_flat[:, 1]]
+        offsets = self.hand_ranks[offsets + hands_flat[:, 2]]
+        offsets = self.hand_ranks[offsets + hands_flat[:, 3]]
+        offsets = self.hand_ranks[offsets + hands_flat[:, 4]]
+        offsets = self.hand_ranks[offsets + hands_flat[:, 5]]
+        offsets = self.hand_ranks[offsets + hands_flat[:, 6]]
     
         hand_ranks = offsets.view(n_showdown, self.active_players)
         player_status = self.status[showdown_games, :self.active_players]
         eligible_mask = (player_status == self.ACTIVE) | (player_status == self.ALLIN)
         # HandRanks.dat returns larger values for stronger showdown hands.
         hand_ranks = hand_ranks.masked_fill(~eligible_mask, torch.iinfo(hand_ranks.dtype).min)
-        best_ranks = hand_ranks.max(dim=1, keepdim=True).values  # [n_showdown, 1]
-        winner_mask = (hand_ranks == best_ranks)  # [n_showdown, active_players] - True for winners
-    
-        # Count winners per game (for split pots)
-        num_winners = winner_mask.sum(dim=1)  # [n_showdown]
-    
-        # Distribute pot to winners
-        pots = self.pots[showdown_games].unsqueeze(1)  # [n_showdown, 1]
-        winnings = (pots * winner_mask.float()) / num_winners.unsqueeze(1)  # [n_showdown, active_players]
-        self.stacks[showdown_games.unsqueeze(1), torch.arange(self.active_players, device=self.device)] += winnings.to(torch.int32)
+        self._award_showdown_side_pots(showdown_games, hand_ranks, eligible_mask)
         self.pots[showdown_games] = 0
         self.stages[showdown_games] = 5
 
