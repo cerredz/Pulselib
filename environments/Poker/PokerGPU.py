@@ -451,6 +451,12 @@ class PokerGPU(gym.Env):
         # step function to handle logic of n_games actions at once
         # get game indices ready
         prev_done = self.is_done.clone()
+        has_legal_actor = (
+            (self.status[self.g, self.idx] != self.FOLDED)
+            & (self.status[self.g, self.idx] != self.ALLIN)
+            & (self.status[self.g, self.idx] != self.SITOUT)
+            & (~prev_done)
+        )
         self.prev_stacks.copy_(self.stacks[self.g, self.idx])
         self.prev_invested.copy_(self.current_round_bet[self.g, self.idx])
 
@@ -540,5 +546,5 @@ class PokerGPU(gym.Env):
         
         # 5) Calculate the actual reward
         rewards = self.poker_reward_gpu(actions=actions)
-        rewards[prev_done] = 0
+        rewards[~has_legal_actor | prev_done] = 0
         return self.get_obs(), rewards, self.is_done, self.is_truncated, self.get_info()
