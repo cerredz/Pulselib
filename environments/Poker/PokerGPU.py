@@ -254,17 +254,21 @@ class PokerGPU(gym.Env):
         ).to(torch.int32)
 
         raise_indices=torch.where(raise_mask)[0]
-        pure_raise_indices=raise_indices[is_raise]
-        new_bets = self.current_round_bet[self.g[pure_raise_indices], self.idx[pure_raise_indices]]
-        old_highest=self.highest[pure_raise_indices].clone()
-        self.highest[pure_raise_indices] = torch.max(self.highest[pure_raise_indices], new_bets)
-        self.agg[pure_raise_indices] = self.idx[pure_raise_indices]
-        self.acted[pure_raise_indices] = 0 # 'new round' of betting on a raise, set acted to 0
-        self.acted[raise_mask] += 1 # increase acted for raisers and callers
-
-        if len(pure_raise_indices) > 0:
+        bet_increase_indices=raise_indices[is_raise]
+        if bet_increase_indices.numel() > 0:
+            new_bets = self.current_round_bet[self.g[bet_increase_indices], self.idx[bet_increase_indices]]
+            old_highest=self.highest[bet_increase_indices].clone()
             actual_raise_sizes = new_bets - old_highest
-            self.last_raise_size[pure_raise_indices] = actual_raise_sizes
+            self.highest[bet_increase_indices] = new_bets
+
+            full_raise_mask = actual_raise_sizes >= self.last_raise_size[bet_increase_indices]
+            full_raise_indices = bet_increase_indices[full_raise_mask]
+            if full_raise_indices.numel() > 0:
+                self.agg[full_raise_indices] = self.idx[full_raise_indices]
+                self.acted[full_raise_indices] = 0 # 'new round' of betting on a full raise, set acted to 0
+                self.last_raise_size[full_raise_indices] = actual_raise_sizes[full_raise_mask]
+
+        self.acted[raise_mask] += 1 # increase acted for raisers and callers
 
     def poker_reward_gpu(self, actions, actor_idx):
         self.s.fill_(0)
