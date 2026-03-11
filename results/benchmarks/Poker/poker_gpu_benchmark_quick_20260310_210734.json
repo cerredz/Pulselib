@@ -1,0 +1,265 @@
+{
+  "metadata": {
+    "suite_name": "poker_gpu_benchmarking",
+    "preset": "quick",
+    "device": "cuda",
+    "generated_at_utc": "2026-03-11T01:07:34.898351+00:00",
+    "warmup_iterations": 1,
+    "measure_iterations": 3,
+    "config_source": "config/pokerGPU.yaml",
+    "benchmark_overrides": {
+      "N_GAMES": 256,
+      "EPISODES": 2
+    }
+  },
+  "cases": [
+    {
+      "name": "env_reset",
+      "category": "environment",
+      "description": "Times live PokerGPU.reset() throughput for vectorized game batches.",
+      "primary_metric": {
+        "name": "elapsed_seconds",
+        "unit": "seconds",
+        "value": 0.008264066666015424,
+        "lower_is_better": true
+      },
+      "timings": {
+        "unit": "seconds",
+        "trials": [
+          0.02191790000142646,
+          0.0009852999974100385,
+          0.0018889999992097728
+        ],
+        "mean": 0.008264066666015424,
+        "median": 0.0018889999992097728,
+        "min": 0.0009852999974100385,
+        "max": 0.02191790000142646,
+        "stdev": 0.011833196608976776
+      },
+      "derived_metrics": [
+        {
+          "name": "games_reset_per_second",
+          "value": 30977.484856548494,
+          "unit": "games_per_second",
+          "higher_is_better": true
+        }
+      ],
+      "metadata": {
+        "n_games": 256
+      }
+    },
+    {
+      "name": "env_calculate_equities",
+      "category": "environment",
+      "description": "Times live PokerGPU.calculate_equities() on prepared river-state batches.",
+      "primary_metric": {
+        "name": "elapsed_seconds",
+        "unit": "seconds",
+        "value": 0.003337400000115546,
+        "lower_is_better": true
+      },
+      "timings": {
+        "unit": "seconds",
+        "trials": [
+          0.003108299999439623,
+          0.003630000002885936,
+          0.0032738999980210792
+        ],
+        "mean": 0.003337400000115546,
+        "median": 0.0032738999980210792,
+        "min": 0.003108299999439623,
+        "max": 0.003630000002885936,
+        "stdev": 0.0002665837787609528
+      },
+      "derived_metrics": [
+        {
+          "name": "equity_batches_per_second",
+          "value": 76706.41816717711,
+          "unit": "games_per_second",
+          "higher_is_better": true
+        }
+      ],
+      "metadata": {
+        "n_games": 256,
+        "street": "river"
+      }
+    },
+    {
+      "name": "env_execute_actions",
+      "category": "environment",
+      "description": "Times live PokerGPU.execute_actions() across the current vectorized game batch.",
+      "primary_metric": {
+        "name": "elapsed_seconds",
+        "unit": "seconds",
+        "value": 0.0055959666666846415,
+        "lower_is_better": true
+      },
+      "timings": {
+        "unit": "seconds",
+        "trials": [
+          0.0057870999989972916,
+          0.005546799999137875,
+          0.005454000001918757
+        ],
+        "mean": 0.0055959666666846415,
+        "median": 0.005546799999137875,
+        "min": 0.005454000001918757,
+        "max": 0.0057870999989972916,
+        "stdev": 0.00017190672736013148
+      },
+      "derived_metrics": [
+        {
+          "name": "action_batches_per_second",
+          "value": 45747.23461526058,
+          "unit": "games_per_second",
+          "higher_is_better": true
+        }
+      ],
+      "metadata": {
+        "n_games": 256,
+        "action_profile": "check_call"
+      }
+    },
+    {
+      "name": "env_step",
+      "category": "environment",
+      "description": "Times one live PokerGPU.step(...) call including reward and round progression work.",
+      "primary_metric": {
+        "name": "elapsed_seconds",
+        "unit": "seconds",
+        "value": 0.009831699998661255,
+        "lower_is_better": true
+      },
+      "timings": {
+        "unit": "seconds",
+        "trials": [
+          0.009768999996595085,
+          0.009690200000477489,
+          0.01003589999891119
+        ],
+        "mean": 0.009831699998661255,
+        "median": 0.009768999996595085,
+        "min": 0.009690200000477489,
+        "max": 0.01003589999891119,
+        "stdev": 0.00018117833734635232
+      },
+      "derived_metrics": [
+        {
+          "name": "env_steps_per_second",
+          "value": 26038.223301652666,
+          "unit": "games_per_second",
+          "higher_is_better": true
+        }
+      ],
+      "metadata": {
+        "n_games": 256
+      }
+    },
+    {
+      "name": "trainer_build_actions",
+      "category": "trainer",
+      "description": "Times live trainer action routing through build_actions(...) for one batch.",
+      "primary_metric": {
+        "name": "elapsed_seconds",
+        "unit": "seconds",
+        "value": 0.002763733333267737,
+        "lower_is_better": true
+      },
+      "timings": {
+        "unit": "seconds",
+        "trials": [
+          0.0027718999990611337,
+          0.002804600000672508,
+          0.00271470000006957
+        ],
+        "mean": 0.002763733333267737,
+        "median": 0.0027718999990611337,
+        "min": 0.00271470000006957,
+        "max": 0.002804600000672508,
+        "stdev": 4.5503003744124945e-05
+      },
+      "derived_metrics": [
+        {
+          "name": "actions_built_per_second",
+          "value": 92628.32883276585,
+          "unit": "games_per_second",
+          "higher_is_better": true
+        }
+      ],
+      "metadata": {
+        "n_games": 256
+      }
+    },
+    {
+      "name": "trainer_q_network_train_step",
+      "category": "trainer",
+      "description": "Times live PokerQNetwork.train_step(...) update cost for one batch.",
+      "primary_metric": {
+        "name": "elapsed_seconds",
+        "unit": "seconds",
+        "value": 0.0026895333345843633,
+        "lower_is_better": true
+      },
+      "timings": {
+        "unit": "seconds",
+        "trials": [
+          0.0030600000027334318,
+          0.0028388999999151565,
+          0.002169700001104502
+        ],
+        "mean": 0.0026895333345843633,
+        "median": 0.0028388999999151565,
+        "min": 0.002169700001104502,
+        "max": 0.0030600000027334318,
+        "stdev": 0.00046356372135786136
+      },
+      "derived_metrics": [
+        {
+          "name": "q_updates_per_second",
+          "value": 95183.79887995026,
+          "unit": "samples_per_second",
+          "higher_is_better": true
+        }
+      ],
+      "metadata": {
+        "batch_size": 256
+      }
+    },
+    {
+      "name": "trainer_short_run",
+      "category": "end_to_end",
+      "description": "Times a short live trainGPU.train_agent(...) run with no-op plotting and benchmark file output.",
+      "primary_metric": {
+        "name": "elapsed_seconds",
+        "unit": "seconds",
+        "value": 0.7334328333308804,
+        "lower_is_better": true
+      },
+      "timings": {
+        "unit": "seconds",
+        "trials": [
+          0.609712599998602,
+          0.6684078999969643,
+          0.922177999997075
+        ],
+        "mean": 0.7334328333308804,
+        "median": 0.6684078999969643,
+        "min": 0.609712599998602,
+        "max": 0.922177999997075,
+        "stdev": 0.1660717857294297
+      },
+      "derived_metrics": [
+        {
+          "name": "trainer_steps_per_second",
+          "value": 720.3155248146699,
+          "unit": "episode_games_per_second",
+          "higher_is_better": true
+        }
+      ],
+      "metadata": {
+        "episodes": 2,
+        "n_games": 256
+      }
+    }
+  ]
+}

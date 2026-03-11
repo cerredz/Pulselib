@@ -1,0 +1,6 @@
+protocol=https
+host=github.com
+path=cerredz/Pulselib.git
+username=cerredz
+
+
