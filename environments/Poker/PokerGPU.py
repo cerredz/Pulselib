@@ -386,6 +386,7 @@ class PokerGPU(gym.Env):
         self.deck_positions[preflop_games] += 1  # burn
         river_cards = self.deal_cards(preflop_games, 1)
         self.board[preflop_games, 4] = river_cards.squeeze(1)
+
         flop_games = g_res[flop_mask]
 
         self.deck_positions[flop_games] += 1  # burn
