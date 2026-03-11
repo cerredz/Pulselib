@@ -1,0 +1,52 @@
+{
+  "metadata": {
+    "suite_name": "poker_gpu_benchmarking",
+    "preset": "quick",
+    "device": "cuda",
+    "generated_at_utc": "2026-03-11T01:07:19.800841+00:00",
+    "warmup_iterations": 1,
+    "measure_iterations": 3,
+    "config_source": "config/pokerGPU.yaml",
+    "benchmark_overrides": {
+      "N_GAMES": 256,
+      "EPISODES": 2
+    }
+  },
+  "cases": [
+    {
+      "name": "trainer_build_actions",
+      "category": "trainer",
+      "description": "Times live trainer action routing through build_actions(...) for one batch.",
+      "primary_metric": {
+        "name": "elapsed_seconds",
+        "unit": "seconds",
+        "value": 0.0031462333317904267,
+        "lower_is_better": true
+      },
+      "timings": {
+        "unit": "seconds",
+        "trials": [
+          0.0027349999982106965,
+          0.0028714999971271027,
+          0.003832200000033481
+        ],
+        "mean": 0.0031462333317904267,
+        "median": 0.0028714999971271027,
+        "min": 0.0027349999982106965,
+        "max": 0.003832200000033481,
+        "stdev": 0.0005979722107936138
+      },
+      "derived_metrics": [
+        {
+          "name": "actions_built_per_second",
+          "value": 81367.13746348816,
+          "unit": "games_per_second",
+          "higher_is_better": true
+        }
+      ],
+      "metadata": {
+        "n_games": 256
+      }
+    }
+  ]
+}
