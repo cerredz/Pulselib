@@ -1,0 +1,4 @@
+interface:
+  display_name: "Poker PyTorch Ticket Executor"
+  short_description: "Strict poker PyTorch ticket workflow."
+  default_prompt: "Use $poker-pytorch-ticket-executor to execute a poker-related PyTorch ticket with tests first, a detailed spec, full validation, and a draft PR."
