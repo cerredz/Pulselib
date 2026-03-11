@@ -87,7 +87,7 @@ def train_agent(env: gym.Env, agents, agent_types, episodes, n_games, device, re
     q_net = next(a for a in agents if isinstance(a, PokerQNetwork))
     torch.save(q_net.network.state_dict(), f"{results_dir}/poker_qnet_final.pth")
     reward_path=results_dir/REWARDS_FILENAME
-    chips_path=result_dir/CHIPS_FILENAME
+    chips_path=results_dir/CHIPS_FILENAME
     end_time=time.time()
 
     plot_learning_curve(
