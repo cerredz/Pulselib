@@ -92,12 +92,13 @@ class PokerGPU(gym.Env):
         if self.stacks is None:
             self.stacks = torch.full((self.n_games, self.n_players), self.starting_bbs, dtype=torch.int32, device=self.device)
         else:
+            stack_rotation = rotation if options is None else options.get('rotation', rotation)
             busted = (self.stacks == 0)
             above_max = (self.stacks > self.max_bbs)
             self.stacks[busted] = self.starting_bbs
             self.stacks[above_max] = self.starting_bbs
-            if options and options['rotation'] != 0:
-                self.stacks = torch.roll(self.stacks, rotation, dims=1)
+            if stack_rotation != 0:
+                self.stacks = torch.roll(self.stacks, stack_rotation, dims=1)
         
         all_cards = self.deal_players_cards(self.active_players * 2)
         self.hands = torch.full((self.n_games, self.n_players, 2), -1, dtype=torch.int32, device=self.device)
