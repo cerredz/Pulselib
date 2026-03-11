@@ -74,6 +74,10 @@ class HeuristicPlayer(Player):
 
     def learn(self, episode): pass
 
+def _decode_gpu_hole_card_ranks(hands: torch.Tensor) -> torch.Tensor:
+    # [B, 2] on the input device: convert 1-based card IDs into zero-based rank buckets.
+    return (hands.long() - 1) % 13
+
 # simple heuristic player, bet solely based on its own hand strength (nothing to do with the board)
 # very simple, one of the first agents that our nn will play against
 class HeuristicHandsPlayerGPU(Player):
@@ -85,8 +89,7 @@ class HeuristicHandsPlayerGPU(Player):
     def action(self, states):
         # get players hands
         n_games=states.shape[0]
-        hands = states[:, 5:7]
-        ranks = hands%13
+        ranks = _decode_gpu_hole_card_ranks(states[:, 5:7])
 
         # extract ranks
         rank1, rank2 = ranks[:, 0], ranks[:, 1]
@@ -111,8 +114,7 @@ class TightAggressivePlayerGPU(Player):
 
     def action(self, states):
         n_games=states.shape[0]
-        hands = states[:, 5:7].long()
-        ranks = hands%13
+        ranks = _decode_gpu_hole_card_ranks(states[:, 5:7])
         rank1, rank2 = ranks[:, 0], ranks[:, 1]
         actions = torch.ones(n_games, dtype=torch.long, device=self.device)
         fold_mask=(rank1 < 7) & (rank2 < 7) & (torch.abs(rank1-rank2) > 5)
@@ -133,8 +135,7 @@ class LoosePassivePlayerGPU(Player):
 
     def action(self, states):
         n_games=states.shape[0]
-        hands = states[:, 5:7].long()
-        ranks = hands%13
+        ranks = _decode_gpu_hole_card_ranks(states[:, 5:7])
         rank1, rank2 = ranks[:, 0], ranks[:, 1]
         actions = torch.zeros(n_games, dtype=torch.long, device=self.device)
         probs=torch.rand(n_games, device=self.device)
@@ -158,9 +159,8 @@ class SmallBallPlayerGPU(Player):
 
     def action(self, states):
         n_games=states.shape[0]
-        hands = states[:, 5:7].long()
         pot_size=states[:, 9]
-        ranks = hands%13
+        ranks = _decode_gpu_hole_card_ranks(states[:, 5:7])
         rank1, rank2 = ranks[:, 0], ranks[:, 1]
         actions = torch.zeros(n_games, dtype=torch.long, device=self.device)
         fold_mask = ((rank1 < 6) & (rank2 < 6) & (pot_size > 30)) | \
