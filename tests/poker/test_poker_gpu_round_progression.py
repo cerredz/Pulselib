@@ -16,6 +16,33 @@ def _build_env(n_players: int) -> PokerGPU:
     return env
 
 
+def _configure_raise_state(
+    env: PokerGPU,
+    *,
+    acting_seat: int,
+    previous_aggressor: int,
+    highest: int,
+    acting_bet: int,
+    last_raise_size: int,
+    acting_stack: int,
+    acted: int,
+) -> None:
+    env.idx[0] = torch.tensor(acting_seat, dtype=torch.int32)
+    env.agg[0] = torch.tensor(previous_aggressor, dtype=torch.int32)
+    env.acted[0] = torch.tensor(acted, dtype=torch.int32)
+    env.highest[0] = torch.tensor(highest, dtype=torch.int32)
+    env.last_raise_size[0] = torch.tensor(last_raise_size, dtype=torch.int32)
+    env.current_round_bet[0] = torch.zeros(env.active_players, dtype=torch.int32)
+    env.current_round_bet[0, acting_seat] = torch.tensor(acting_bet, dtype=torch.int32)
+    env.current_round_bet[0, previous_aggressor] = torch.tensor(highest, dtype=torch.int32)
+    env.total_invested[0] = env.current_round_bet[0].clone()
+    env.stacks[0] = torch.full((env.active_players,), 100, dtype=torch.int32)
+    env.stacks[0, acting_seat] = torch.tensor(acting_stack, dtype=torch.int32)
+    env.status[0] = torch.full((env.active_players,), env.ACTIVE, dtype=torch.int32)
+    env.pots[0] = torch.tensor(int(env.total_invested[0].sum().item()), dtype=torch.int32)
+    env.is_done[0] = False
+
+
 def test_step_skips_folded_and_all_in_seats_when_selecting_next_actor():
     env = _build_env(n_players=4)
     env.stacks[0] = torch.tensor([100, 100, 0, 100], dtype=torch.int32)
@@ -127,6 +154,52 @@ def test_step_sets_heads_up_postflop_opener_to_first_active_seat_left_of_button(
     assert env.button[0].item() == 0
     assert env.idx[0].item() == 1
     assert info["seat_idx"][0].item() == 1
+
+
+def test_execute_actions_short_all_in_does_not_reopen_action_or_shrink_min_raise():
+    env = _build_env(n_players=3)
+    _configure_raise_state(
+        env,
+        acting_seat=0,
+        previous_aggressor=2,
+        highest=20,
+        acting_bet=15,
+        last_raise_size=10,
+        acting_stack=8,
+        acted=2,
+    )
+
+    env.execute_actions(torch.tensor([12], dtype=torch.long))
+
+    assert env.current_round_bet[0, 0].item() == 23
+    assert env.highest[0].item() == 23
+    assert env.agg[0].item() == 2
+    assert env.acted[0].item() == 3
+    assert env.last_raise_size[0].item() == 10
+    assert env.status[0, 0].item() == env.ALLIN
+
+
+def test_execute_actions_full_all_in_reopens_action_and_updates_min_raise():
+    env = _build_env(n_players=3)
+    _configure_raise_state(
+        env,
+        acting_seat=0,
+        previous_aggressor=2,
+        highest=20,
+        acting_bet=15,
+        last_raise_size=10,
+        acting_stack=20,
+        acted=2,
+    )
+
+    env.execute_actions(torch.tensor([12], dtype=torch.long))
+
+    assert env.current_round_bet[0, 0].item() == 35
+    assert env.highest[0].item() == 35
+    assert env.agg[0].item() == 0
+    assert env.acted[0].item() == 1
+    assert env.last_raise_size[0].item() == 15
+    assert env.status[0, 0].item() == env.ALLIN
 
 
 def test_step_reward_uses_acting_seat_equity_before_turn_advances():
