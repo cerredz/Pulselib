@@ -1,6 +1,7 @@
 Title: Add a standalone Poker GPU logic regression runner
 
 Issue URL: https://github.com/cerredz/Pulselib/issues/41
+PR URL: https://github.com/cerredz/Pulselib/pull/42
 
 Intent:
 Provide a single executable file in `scripts/Poker/` that runs a comprehensive set of Poker GPU environment logic checks from one entrypoint, with readable multi-line descriptions for every case, so the user can review and run the full regression surface without depending on pytest discovery.
