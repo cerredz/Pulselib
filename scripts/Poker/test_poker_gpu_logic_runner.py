@@ -54,6 +54,10 @@ reset_batch_contracts = _load(
     "test_poker_gpu_reset_batch_contracts",
     "tests/poker/test_poker_gpu_reset_batch_contracts.py",
 )
+headsup_opening_contracts = _load(
+    "test_poker_gpu_headsup_opening_contracts",
+    "tests/poker/test_poker_gpu_headsup_opening_contracts.py",
+)
 
 
 def _assert_hand_ranks_present() -> None:
@@ -187,6 +191,24 @@ def _build_cases() -> list[TestCase]:
                 "It also confirms the opening turn order follows the new button."
             ),
             run=reset_batch_contracts.test_second_reset_advances_button_and_recomputes_blinds_and_first_actor,
+        ),
+        TestCase(
+            name="heads-up/reset-assigns-button-as-small-blind-and-other-seat-as-big-blind",
+            description=(
+                "Verify a fresh heads-up reset treats the button seat as the small blind position,\n"
+                "the other seat as the big blind, and the button as the first preflop actor.\n"
+                "This protects the standard heads-up opening contract."
+            ),
+            run=headsup_opening_contracts.test_reset_heads_up_assigns_button_as_small_blind_and_other_seat_as_big_blind,
+        ),
+        TestCase(
+            name="heads-up/second-reset-rotates-button-and-preserves-opening-order",
+            description=(
+                "Verify consecutive heads-up resets rotate the button and preserve legal blind and first-actor semantics.\n"
+                "This protects persistent two-player play across hand boundaries.\n"
+                "It also confirms the big blind posting follows the rotated button."
+            ),
+            run=headsup_opening_contracts.test_reset_heads_up_second_hand_rotates_button_and_preserves_opening_order,
         ),
         TestCase(
             name="observation/core-fields-pack-correctly",
@@ -421,6 +443,24 @@ def _build_cases() -> list[TestCase]:
                 "This protects vectorized independence across heterogeneous game states."
             ),
             run=reset_batch_contracts.test_step_mixed_batch_keeps_each_row_isolated,
+        ),
+        TestCase(
+            name="heads-up/preflop-call-then-check-advances-to-flop-with-big-blind-postflop-opener",
+            description=(
+                "Verify a heads-up preflop sequence where the button calls and the big blind checks the option\n"
+                "advances to the flop with the big blind acting first postflop.\n"
+                "This protects the full heads-up opening flow from reset through street transition."
+            ),
+            run=headsup_opening_contracts.test_step_heads_up_preflop_call_then_check_advances_to_flop_with_big_blind_acting_first,
+        ),
+        TestCase(
+            name="heads-up/button-fold-gives-big-blind-opening-pot",
+            description=(
+                "Verify a heads-up button fold on the first preflop action immediately awards the opening pot to the big blind.\n"
+                "This protects the simplest two-player terminal path.\n"
+                "It also confirms the pot is cleared in the same step."
+            ),
+            run=headsup_opening_contracts.test_step_heads_up_button_fold_gives_big_blind_the_opening_pot,
         ),
         TestCase(
             name="street-actor/flop-starts-left-of-button",

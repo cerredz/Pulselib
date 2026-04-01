@@ -112,10 +112,17 @@ class PokerGPU(gym.Env):
 
         self.button = (self.button + 1) % self.active_players if hasattr(self, 'button_pos') else torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
         self.button_pos=self.button[0]
-        self.sb = (self.button + 1) % self.active_players
-        self.bb = (self.button + 2) % self.active_players
+        if self.active_players == 2:
+            self.sb = self.button.clone()
+            self.bb = (self.button + 1) % self.active_players
+        else:
+            self.sb = (self.button + 1) % self.active_players
+            self.bb = (self.button + 2) % self.active_players
         self.post_blinds()
-        self.idx = (self.bb + 1) % self.active_players
+        if self.active_players == 2:
+            self.idx = self.button.clone()
+        else:
+            self.idx = (self.bb + 1) % self.active_players
         self.highest = torch.ones(self.n_games, dtype=torch.int32, device=self.device)
         self.agg = self.bb.clone()
         self.acted = torch.zeros(self.n_games, dtype=torch.int32, device=self.device)
