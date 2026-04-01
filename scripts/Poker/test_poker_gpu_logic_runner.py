@@ -46,6 +46,10 @@ action_terminal_contracts = _load(
     "test_poker_gpu_action_terminal_contracts",
     "tests/poker/test_poker_gpu_action_terminal_contracts.py",
 )
+reward_equity_contracts = _load(
+    "test_poker_gpu_reward_equity_contracts",
+    "tests/poker/test_poker_gpu_reward_equity_contracts.py",
+)
 
 
 def _assert_hand_ranks_present() -> None:
@@ -269,6 +273,51 @@ def _build_cases() -> list[TestCase]:
                 "It also confirms dirty rows fall back to the documented preflop baseline when appropriate."
             ),
             run=action_terminal_contracts.test_calculate_equities_leaves_clean_rows_untouched,
+        ),
+        TestCase(
+            name="reward/zero-pot-and-zero-call-cost-stays-finite",
+            description=(
+                "Verify fold, call, and raise rewards stay finite and collapse to zero when both the pot\n"
+                "and the outstanding call cost are zero.\n"
+                "This protects the reward path from NaNs and divide-by-zero edge cases."
+            ),
+            run=reward_equity_contracts.test_poker_reward_gpu_zero_pot_and_call_cost_returns_finite_zero_rewards,
+        ),
+        TestCase(
+            name="reward/call-branch-increases-with-equity",
+            description=(
+                "Verify the direct call reward increases as the acting seat's equity increases\n"
+                "while the pot and call cost stay fixed.\n"
+                "This protects monotonic learning signal in the call branch."
+            ),
+            run=reward_equity_contracts.test_poker_reward_gpu_call_reward_increases_with_equity,
+        ),
+        TestCase(
+            name="reward/fold-branch-decreases-with-equity",
+            description=(
+                "Verify the direct fold reward becomes worse as the acting seat's equity increases\n"
+                "while the pot and call cost stay fixed.\n"
+                "This protects monotonic learning signal in the fold branch."
+            ),
+            run=reward_equity_contracts.test_poker_reward_gpu_fold_reward_decreases_with_equity,
+        ),
+        TestCase(
+            name="reward/raise-branch-tracks-equity-vs-fair-share",
+            description=(
+                "Verify the direct raise reward is negative below the fair-share equity threshold\n"
+                "and positive above it for the same multiway pot.\n"
+                "This protects the intended aggressiveness incentive in the raise branch."
+            ),
+            run=reward_equity_contracts.test_poker_reward_gpu_raise_reward_tracks_equity_vs_fair_share,
+        ),
+        TestCase(
+            name="equity/postflop-rows-stay-bounded-and-rank-river-strength",
+            description=(
+                "Verify mixed flop, turn, and river equity calculations stay within the normalized [0, 1] range\n"
+                "and that a clearly stronger river hand receives the higher normalized value.\n"
+                "This protects postflop equity normalization across stages."
+            ),
+            run=reward_equity_contracts.test_calculate_equities_postflop_rows_stay_bounded_and_rank_stronger_river_hand_higher,
         ),
         TestCase(
             name="termination/fold-end-clears-round-state",
