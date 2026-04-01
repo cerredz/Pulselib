@@ -42,6 +42,10 @@ no_actor_rewards = _load("test_poker_gpu_no_actor_rewards", "tests/poker/test_po
 reset_rotation = _load("test_poker_gpu_reset_rotation", "tests/poker/test_poker_gpu_reset_rotation.py")
 street_actor_reset = _load("test_poker_gpu_street_actor_reset", "tests/poker/test_poker_gpu_street_actor_reset.py")
 state_contracts = _load("test_poker_gpu_state_contracts", "tests/poker/test_poker_gpu_state_contracts.py")
+action_terminal_contracts = _load(
+    "test_poker_gpu_action_terminal_contracts",
+    "tests/poker/test_poker_gpu_action_terminal_contracts.py",
+)
 
 
 def _assert_hand_ranks_present() -> None:
@@ -202,6 +206,87 @@ def _build_cases() -> list[TestCase]:
                 "It also confirms the resulting highest bet and pot size reflect the rounded amount."
             ),
             run=state_contracts.test_execute_actions_fractional_raise_rounds_down_to_int_chips,
+        ),
+        TestCase(
+            name="actions/short-call-allin-caps-at-stack",
+            description=(
+                "Verify a call that costs more chips than the actor has only spends the remaining stack\n"
+                "and marks the actor all-in instead of driving the stack negative.\n"
+                "This protects partial-call all-in accounting."
+            ),
+            run=action_terminal_contracts.test_execute_actions_call_uses_remaining_stack_and_marks_allin,
+        ),
+        TestCase(
+            name="actions/min-raise-reopens-and-updates-raise-size",
+            description=(
+                "Verify a direct min-raise applies the stored last-raise size, reopens action,\n"
+                "and transfers aggressor ownership to the raising seat.\n"
+                "This protects the no-limit betting contract for explicit min-raises."
+            ),
+            run=action_terminal_contracts.test_execute_actions_min_raise_reopens_action_and_updates_raise_size,
+        ),
+        TestCase(
+            name="termination/fold-winner-resolution-is-idempotent",
+            description=(
+                "Verify resolving a fold winner twice does not pay the same pot twice after the first award.\n"
+                "This protects terminal settlement from duplicate invocation bugs.\n"
+                "It also confirms the pot is the sole one-shot payout source."
+            ),
+            run=action_terminal_contracts.test_resolve_fold_winners_is_idempotent_after_pot_is_cleared,
+        ),
+        TestCase(
+            name="termination/no-done-rows-leaves-state-untouched",
+            description=(
+                "Verify showdown resolution is a no-op when no rows are marked done and no runout is required.\n"
+                "This protects mixed batches from accidental board dealing or payouts on live hands.\n"
+                "It also confirms deck positions stay stable."
+            ),
+            run=action_terminal_contracts.test_resolve_terminated_games_noops_when_no_done_rows_need_resolution,
+        ),
+        TestCase(
+            name="termination/turn-runout-preserves-board-and-burns-once",
+            description=(
+                "Verify a turn-stage all-in runout keeps the existing flop and turn cards intact,\n"
+                "burns exactly one card, and deals only the river before showdown.\n"
+                "This protects partial-board runout correctness."
+            ),
+            run=action_terminal_contracts.test_resolve_terminated_games_turn_runout_preserves_existing_board_and_burns_once,
+        ),
+        TestCase(
+            name="termination/flop-runout-preserves-flop-and-deals-turn-river",
+            description=(
+                "Verify a flop-stage all-in runout preserves the existing flop,\n"
+                "then deals the turn and river with the correct burn-card pattern.\n"
+                "This protects staged board completion from overwriting public cards."
+            ),
+            run=action_terminal_contracts.test_resolve_terminated_games_flop_runout_preserves_flop_and_deals_turn_then_river,
+        ),
+        TestCase(
+            name="equity/clean-rows-remain-untouched",
+            description=(
+                "Verify equity recomputation updates only dirty rows and leaves already-clean rows unchanged.\n"
+                "This protects the hot-path dirty-bit cache from silently rewriting stable values.\n"
+                "It also confirms dirty rows fall back to the documented preflop baseline when appropriate."
+            ),
+            run=action_terminal_contracts.test_calculate_equities_leaves_clean_rows_untouched,
+        ),
+        TestCase(
+            name="termination/fold-end-clears-round-state",
+            description=(
+                "Verify a fold that ends the hand clears current-round bets, total invested amounts, and highest bet.\n"
+                "This protects reset-free terminal cleanup for rows that finish before showdown.\n"
+                "It also confirms the winner receives the pot exactly once."
+            ),
+            run=action_terminal_contracts.test_step_clears_round_state_after_fold_ends_hand,
+        ),
+        TestCase(
+            name="termination/river-showdown-clears-round-state",
+            description=(
+                "Verify a river showdown step clears current-round bets, total invested amounts, and highest bet\n"
+                "after the hand is settled and the pot is awarded.\n"
+                "This protects post-showdown cleanup for immediately resettable rows."
+            ),
+            run=action_terminal_contracts.test_step_clears_round_state_after_river_showdown,
         ),
         TestCase(
             name="street-actor/flop-starts-left-of-button",

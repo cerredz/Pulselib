@@ -240,7 +240,7 @@ class PokerGPU(gym.Env):
         self.raise_amounts.fill_(0)
         # min-raise
         min_raise_mask=(actions==2)&raise_mask
-        self.raise_amounts[min_raise_mask] = call_costs[min_raise_mask] + self.last_raise_size[min_raise_mask]
+        self.raise_amounts[min_raise_mask] = self.last_raise_size[min_raise_mask]
 
         # all in 
         all_in_mask=(actions == 12) & raise_mask
