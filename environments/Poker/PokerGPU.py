@@ -151,8 +151,9 @@ class PokerGPU(gym.Env):
         self.obs[:, 12:13] = self.status[self.g, self.idx].unsqueeze(1)
 
         n_opp = self.active_players - 1
-        opp_offsets = torch.arange(1, 1 + n_opp, device=self.device)  # Length = n_opp exactly
-        opp_idx = (self.idx.unsqueeze(1) + opp_offsets) % self.n_players
+        self.obs[:, 13:] = 0
+        opp_offsets = torch.arange(1, 1 + n_opp, device=self.device)
+        opp_idx = (self.idx.unsqueeze(1) + opp_offsets) % self.active_players
         end_idx = 13 + n_opp * 3
             
         self.obs[:, 13:end_idx:3] = self.stacks[self.g.unsqueeze(1), opp_idx]

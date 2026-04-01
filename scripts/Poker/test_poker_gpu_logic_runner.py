@@ -41,6 +41,7 @@ round_progression = _load("test_poker_gpu_round_progression", "tests/poker/test_
 no_actor_rewards = _load("test_poker_gpu_no_actor_rewards", "tests/poker/test_poker_gpu_no_actor_rewards.py")
 reset_rotation = _load("test_poker_gpu_reset_rotation", "tests/poker/test_poker_gpu_reset_rotation.py")
 street_actor_reset = _load("test_poker_gpu_street_actor_reset", "tests/poker/test_poker_gpu_street_actor_reset.py")
+state_contracts = _load("test_poker_gpu_state_contracts", "tests/poker/test_poker_gpu_state_contracts.py")
 
 
 def _assert_hand_ranks_present() -> None:
@@ -120,6 +121,87 @@ def _build_cases() -> list[TestCase]:
                 "It also ensures later blind posting starts from a legal stack state."
             ),
             run=reset_rotation.test_reset_restores_invalid_persistent_stacks_before_rotating,
+        ),
+        TestCase(
+            name="observation/core-fields-pack-correctly",
+            description=(
+                "Verify the observation vector packs board cards, acting hand, stage, relative position, pot,\n"
+                "call amount, stack, and status into their documented slots for the current actor.\n"
+                "This protects the fundamental state contract consumed by the poker agents."
+            ),
+            run=state_contracts.test_get_obs_packs_core_fields_for_current_actor,
+        ),
+        TestCase(
+            name="observation/short-handed-live-opponents-zero-pad-unused-slots",
+            description=(
+                "Verify a short-handed table embedded in a larger max-player layout lists only live opponents\n"
+                "in order and leaves the remaining observation padding as zeros.\n"
+                "This protects variable-player training from leaking sit-out seats into real opponent features."
+            ),
+            run=state_contracts.test_get_obs_short_handed_orders_only_live_opponents_and_zero_pads_unused_slots,
+        ),
+        TestCase(
+            name="setup/post-blinds-updates-pot-bets-and-allin-state",
+            description=(
+                "Verify posting blinds updates the pot, the round bet, total invested, and the blind seat status.\n"
+                "This includes the edge case where posting the blind consumes the entire stack.\n"
+                "It protects the opening chip-flow contract of every hand."
+            ),
+            run=state_contracts.test_post_blinds_updates_pot_bets_and_allin_status,
+        ),
+        TestCase(
+            name="setup/deal-players-cards-advances-positions-per-game",
+            description=(
+                "Verify preflop dealing advances deck positions by the requested number of cards and preserves\n"
+                "per-game card order inside a batched environment.\n"
+                "This protects card uniqueness and deterministic deck slicing."
+            ),
+            run=state_contracts.test_deal_players_cards_advances_positions_and_preserves_per_game_order,
+        ),
+        TestCase(
+            name="setup/deal-cards-updates-only-selected-games",
+            description=(
+                "Verify board-card dealing mutates only the selected game rows and leaves other rows untouched.\n"
+                "This protects batched street transitions from cross-row contamination.\n"
+                "It also confirms deck positions advance only for the targeted games."
+            ),
+            run=state_contracts.test_deal_cards_updates_only_selected_games,
+        ),
+        TestCase(
+            name="setup/get-info-reports-live-contract",
+            description=(
+                "Verify get_info returns the active-player count, the live stack tensor, and the current seat index.\n"
+                "This protects the trainer and runner contract that consumes info-side metadata.\n"
+                "It also confirms the returned values match the environment's current state."
+            ),
+            run=state_contracts.test_get_info_reports_active_players_stacks_and_current_seat,
+        ),
+        TestCase(
+            name="actions/inactive-seats-ignore-incoming-actions",
+            description=(
+                "Verify folded, all-in, sit-out, and already-done rows ignore incoming actions entirely.\n"
+                "This protects batched action execution from mutating illegal actors.\n"
+                "It also confirms inactive rows do not consume chips or increment acted counters."
+            ),
+            run=state_contracts.test_execute_actions_ignores_folded_allin_sitout_and_done_rows,
+        ),
+        TestCase(
+            name="actions/check-with-zero-call-cost-only-marks-acted",
+            description=(
+                "Verify a check in a zero-call-cost spot only marks the actor as having acted.\n"
+                "This protects no-cost action semantics from accidentally moving chips.\n"
+                "It also confirms the pot and investment state remain unchanged."
+            ),
+            run=state_contracts.test_execute_actions_check_only_marks_actor_as_acted_when_call_cost_is_zero,
+        ),
+        TestCase(
+            name="actions/fractional-raise-rounds-down-to-int-chips",
+            description=(
+                "Verify a fractional pot raise is truncated to an integer number of chips before application.\n"
+                "This protects integer chip accounting and ensures pot-sized action ids have deterministic semantics.\n"
+                "It also confirms the resulting highest bet and pot size reflect the rounded amount."
+            ),
+            run=state_contracts.test_execute_actions_fractional_raise_rounds_down_to_int_chips,
         ),
         TestCase(
             name="street-actor/flop-starts-left-of-button",
