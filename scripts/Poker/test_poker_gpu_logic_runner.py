@@ -50,6 +50,10 @@ reward_equity_contracts = _load(
     "test_poker_gpu_reward_equity_contracts",
     "tests/poker/test_poker_gpu_reward_equity_contracts.py",
 )
+reset_batch_contracts = _load(
+    "test_poker_gpu_reset_batch_contracts",
+    "tests/poker/test_poker_gpu_reset_batch_contracts.py",
+)
 
 
 def _assert_hand_ranks_present() -> None:
@@ -129,6 +133,60 @@ def _build_cases() -> list[TestCase]:
                 "It also ensures later blind posting starts from a legal stack state."
             ),
             run=reset_rotation.test_reset_restores_invalid_persistent_stacks_before_rotating,
+        ),
+        TestCase(
+            name="reset/accepts-none-options-full-ring-defaults",
+            description=(
+                "Verify reset accepts the Gym-default call with no options payload\n"
+                "and initializes a full-ring hand with blinds, first actor, and deck position set.\n"
+                "This protects the public environment API contract."
+            ),
+            run=reset_batch_contracts.test_reset_accepts_none_options_and_initializes_full_ring,
+        ),
+        TestCase(
+            name="reset/accepts-partial-options-without-active-player-flag",
+            description=(
+                "Verify reset accepts a partial options payload that omits the active-player flag\n"
+                "instead of raising a key error.\n"
+                "This protects callers that only want to set rotation or seat metadata."
+            ),
+            run=reset_batch_contracts.test_reset_accepts_partial_options_without_active_players_key,
+        ),
+        TestCase(
+            name="reset/random-active-player-count-respects-q-seat-floor",
+            description=(
+                "Verify short-handed randomization never chooses fewer live seats than the configured Q seat requires.\n"
+                "This protects training runs where the tracked seat must always be dealt into the hand.\n"
+                "It also confirms the remaining seats become sit-outs."
+            ),
+            run=reset_batch_contracts.test_reset_random_active_players_respects_q_seat_floor,
+        ),
+        TestCase(
+            name="reset/inactive-seats-become-sitout-with-empty-hands",
+            description=(
+                "Verify short-handed reset marks inactive seats as sit-outs and leaves their hole cards at -1.\n"
+                "This protects hand encoding and downstream observation packing for unused seats.\n"
+                "It also confirms live seats are still dealt normally."
+            ),
+            run=reset_batch_contracts.test_reset_marks_inactive_seats_sitout_and_unused_hands_negative_one,
+        ),
+        TestCase(
+            name="reset/decks-are-permutations-and-hole-cards-are-unique",
+            description=(
+                "Verify each reset deck is a full 1..52 permutation and the active hole cards within a game are unique.\n"
+                "This protects the base card-dealing integrity contract before any betting begins.\n"
+                "It also catches duplicate-card corruption at reset time."
+            ),
+            run=reset_batch_contracts.test_reset_decks_are_permutations_and_active_hole_cards_are_unique_per_game,
+        ),
+        TestCase(
+            name="reset/second-reset-advances-button-and-blinds",
+            description=(
+                "Verify a second reset advances the button and recomputes the small blind, big blind, and first actor.\n"
+                "This protects seat rotation across consecutive hands in persistent environments.\n"
+                "It also confirms the opening turn order follows the new button."
+            ),
+            run=reset_batch_contracts.test_second_reset_advances_button_and_recomputes_blinds_and_first_actor,
         ),
         TestCase(
             name="observation/core-fields-pack-correctly",
@@ -336,6 +394,33 @@ def _build_cases() -> list[TestCase]:
                 "This protects post-showdown cleanup for immediately resettable rows."
             ),
             run=action_terminal_contracts.test_step_clears_round_state_after_river_showdown,
+        ),
+        TestCase(
+            name="termination/tied-main-pot-returns-extra-chip-to-only-eligible-contributor",
+            description=(
+                "Verify a tied main pot still returns an unmatched extra chip to the only player eligible for that side layer.\n"
+                "This protects contribution-based settlement when stacks were not perfectly matched.\n"
+                "It also confirms the pot is fully cleared afterward."
+            ),
+            run=reset_batch_contracts.test_resolve_terminated_games_returns_extra_chip_to_only_eligible_contributor_in_tied_main_pot,
+        ),
+        TestCase(
+            name="termination/single-survivor-done-row-waits-for-fold-resolution",
+            description=(
+                "Verify showdown resolution leaves done rows with only one survivor untouched\n"
+                "so fold-winner payout remains the only code path that awards that pot.\n"
+                "This protects settlement-path separation."
+            ),
+            run=reset_batch_contracts.test_resolve_terminated_games_done_single_survivor_row_is_left_for_fold_resolution,
+        ),
+        TestCase(
+            name="batch/mixed-row-outcomes-stay-isolated",
+            description=(
+                "Verify a single batched step can fold out one row, advance a second row to the flop,\n"
+                "auto-run a third row, and leave an already-done fourth row untouched.\n"
+                "This protects vectorized independence across heterogeneous game states."
+            ),
+            run=reset_batch_contracts.test_step_mixed_batch_keeps_each_row_isolated,
         ),
         TestCase(
             name="street-actor/flop-starts-left-of-button",

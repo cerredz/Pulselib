@@ -72,7 +72,8 @@ class PokerGPU(gym.Env):
 
     def reset(self, seed=None, options=None, rotation=0):
         super().reset(seed=seed)
-        if options and options['active_players']:
+        options = options or {}
+        if options.get('active_players', False):
             candidate_players=torch.randint(2, self.n_players+1, (1,), device=self.device).item()
         else: candidate_players = self.n_players
         q_seat = options.get('q_agent_seat', 0)
@@ -92,7 +93,7 @@ class PokerGPU(gym.Env):
         if self.stacks is None:
             self.stacks = torch.full((self.n_games, self.n_players), self.starting_bbs, dtype=torch.int32, device=self.device)
         else:
-            stack_rotation = rotation if options is None else options.get('rotation', rotation)
+            stack_rotation = options.get('rotation', rotation)
             busted = (self.stacks == 0)
             above_max = (self.stacks > self.max_bbs)
             self.stacks[busted] = self.starting_bbs
