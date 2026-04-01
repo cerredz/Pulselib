@@ -58,6 +58,10 @@ headsup_opening_contracts = _load(
     "test_poker_gpu_headsup_opening_contracts",
     "tests/poker/test_poker_gpu_headsup_opening_contracts.py",
 )
+environment_logic_matrix = _load(
+    "test_poker_gpu_environment_logic_matrix",
+    "tests/poker/test_poker_gpu_environment_logic_matrix.py",
+)
 
 
 def _assert_hand_ranks_present() -> None:
@@ -83,7 +87,7 @@ def _assert_should_stop_loop_matches_five_step_cadence() -> None:
 
 
 def _build_cases() -> list[TestCase]:
-    return [
+    cases = [
         TestCase(
             name="asset/hand-ranks-present",
             description=(
@@ -796,6 +800,11 @@ def _build_cases() -> list[TestCase]:
             run=_assert_should_stop_loop_matches_five_step_cadence,
         ),
     ]
+    cases.extend(
+        TestCase(name=case["name"], description=case["description"], run=case["run"])
+        for case in environment_logic_matrix.runner_cases()
+    )
+    return cases
 
 
 def main() -> int:
