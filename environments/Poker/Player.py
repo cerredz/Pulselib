@@ -259,7 +259,7 @@ class PokerQNetwork(nn.Module):
             # states where reward is 0 (terminated game)
         
         valid_mask = ((states[:, 12] == 0) | (states[:, 12] == 2))
-        if not valid_mask.any(): return 0.0
+        if not valid_mask.any(): return None
 
         states = states[valid_mask]
         actions = actions[valid_mask]
@@ -275,10 +275,12 @@ class PokerQNetwork(nn.Module):
             targets = rewards + self.gamma * next_q_values * (~dones).float() 
 
         loss=self.criterion(q_values_for_actions, targets)
+        td_errors = torch.abs(q_values_for_actions - targets).mean().item()
 
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+        total_norm = torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+        clip_rate = 1.0 if total_norm > 1.0 else 0.0
         self.optimizer.step()
 
         self.step_count += 1
@@ -293,7 +295,15 @@ class PokerQNetwork(nn.Module):
         if self.step_count % self.update_freq == 0:
             self.target_network.load_state_dict(self.network.state_dict())
 
-        return loss
+        return {
+            "loss": loss.item(),
+            "q_mean": q_values_for_actions.mean().item(),
+            "q_min": q_values_for_actions.min().item(),
+            "q_max": q_values_for_actions.max().item(),
+            "td_error": td_errors,
+            "grad_norm": total_norm.item(),
+            "clip_rate": clip_rate
+        }
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.wd, fused=True)
