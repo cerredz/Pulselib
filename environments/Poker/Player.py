@@ -275,7 +275,6 @@ class PokerQNetwork(nn.Module):
             targets = rewards + self.gamma * next_q_values * (~dones).float() 
 
         loss=self.criterion(q_values_for_actions, targets)
-
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
