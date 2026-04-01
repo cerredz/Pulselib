@@ -81,7 +81,15 @@ class PokerGPU(gym.Env):
         self.last_raise_size = torch.ones(self.n_games, dtype=torch.int32, device=self.device) 
 
         # game state tensors
-        self.decks=torch.rand(self.n_games, 52, device=self.device).argsort(dim=1)+1
+        prefixed_decks = options.get("prefixed_decks")
+        if prefixed_decks is None:
+            self.decks=torch.rand(self.n_games, 52, device=self.device).argsort(dim=1)+1
+        else:
+            deck_tensor = torch.as_tensor(prefixed_decks, dtype=torch.int32, device=self.device)
+            expected_shape = (self.n_games, 52)
+            if tuple(deck_tensor.shape) != expected_shape:
+                raise ValueError(f"prefixed_decks must have shape {expected_shape}, got {tuple(deck_tensor.shape)}")
+            self.decks = deck_tensor.clone()
         self.deck_positions=torch.zeros(self.n_games, device=self.device, dtype=torch.int32)
         
         self.board = torch.full((self.n_games, 5), -1, dtype=torch.int32, device=self.device)
