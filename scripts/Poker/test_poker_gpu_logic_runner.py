@@ -41,6 +41,15 @@ round_progression = _load("test_poker_gpu_round_progression", "tests/poker/test_
 no_actor_rewards = _load("test_poker_gpu_no_actor_rewards", "tests/poker/test_poker_gpu_no_actor_rewards.py")
 reset_rotation = _load("test_poker_gpu_reset_rotation", "tests/poker/test_poker_gpu_reset_rotation.py")
 street_actor_reset = _load("test_poker_gpu_street_actor_reset", "tests/poker/test_poker_gpu_street_actor_reset.py")
+state_contracts = _load("test_poker_gpu_state_contracts", "tests/poker/test_poker_gpu_state_contracts.py")
+action_terminal_contracts = _load(
+    "test_poker_gpu_action_terminal_contracts",
+    "tests/poker/test_poker_gpu_action_terminal_contracts.py",
+)
+reward_equity_contracts = _load(
+    "test_poker_gpu_reward_equity_contracts",
+    "tests/poker/test_poker_gpu_reward_equity_contracts.py",
+)
 
 
 def _assert_hand_ranks_present() -> None:
@@ -120,6 +129,213 @@ def _build_cases() -> list[TestCase]:
                 "It also ensures later blind posting starts from a legal stack state."
             ),
             run=reset_rotation.test_reset_restores_invalid_persistent_stacks_before_rotating,
+        ),
+        TestCase(
+            name="observation/core-fields-pack-correctly",
+            description=(
+                "Verify the observation vector packs board cards, acting hand, stage, relative position, pot,\n"
+                "call amount, stack, and status into their documented slots for the current actor.\n"
+                "This protects the fundamental state contract consumed by the poker agents."
+            ),
+            run=state_contracts.test_get_obs_packs_core_fields_for_current_actor,
+        ),
+        TestCase(
+            name="observation/short-handed-live-opponents-zero-pad-unused-slots",
+            description=(
+                "Verify a short-handed table embedded in a larger max-player layout lists only live opponents\n"
+                "in order and leaves the remaining observation padding as zeros.\n"
+                "This protects variable-player training from leaking sit-out seats into real opponent features."
+            ),
+            run=state_contracts.test_get_obs_short_handed_orders_only_live_opponents_and_zero_pads_unused_slots,
+        ),
+        TestCase(
+            name="setup/post-blinds-updates-pot-bets-and-allin-state",
+            description=(
+                "Verify posting blinds updates the pot, the round bet, total invested, and the blind seat status.\n"
+                "This includes the edge case where posting the blind consumes the entire stack.\n"
+                "It protects the opening chip-flow contract of every hand."
+            ),
+            run=state_contracts.test_post_blinds_updates_pot_bets_and_allin_status,
+        ),
+        TestCase(
+            name="setup/deal-players-cards-advances-positions-per-game",
+            description=(
+                "Verify preflop dealing advances deck positions by the requested number of cards and preserves\n"
+                "per-game card order inside a batched environment.\n"
+                "This protects card uniqueness and deterministic deck slicing."
+            ),
+            run=state_contracts.test_deal_players_cards_advances_positions_and_preserves_per_game_order,
+        ),
+        TestCase(
+            name="setup/deal-cards-updates-only-selected-games",
+            description=(
+                "Verify board-card dealing mutates only the selected game rows and leaves other rows untouched.\n"
+                "This protects batched street transitions from cross-row contamination.\n"
+                "It also confirms deck positions advance only for the targeted games."
+            ),
+            run=state_contracts.test_deal_cards_updates_only_selected_games,
+        ),
+        TestCase(
+            name="setup/get-info-reports-live-contract",
+            description=(
+                "Verify get_info returns the active-player count, the live stack tensor, and the current seat index.\n"
+                "This protects the trainer and runner contract that consumes info-side metadata.\n"
+                "It also confirms the returned values match the environment's current state."
+            ),
+            run=state_contracts.test_get_info_reports_active_players_stacks_and_current_seat,
+        ),
+        TestCase(
+            name="actions/inactive-seats-ignore-incoming-actions",
+            description=(
+                "Verify folded, all-in, sit-out, and already-done rows ignore incoming actions entirely.\n"
+                "This protects batched action execution from mutating illegal actors.\n"
+                "It also confirms inactive rows do not consume chips or increment acted counters."
+            ),
+            run=state_contracts.test_execute_actions_ignores_folded_allin_sitout_and_done_rows,
+        ),
+        TestCase(
+            name="actions/check-with-zero-call-cost-only-marks-acted",
+            description=(
+                "Verify a check in a zero-call-cost spot only marks the actor as having acted.\n"
+                "This protects no-cost action semantics from accidentally moving chips.\n"
+                "It also confirms the pot and investment state remain unchanged."
+            ),
+            run=state_contracts.test_execute_actions_check_only_marks_actor_as_acted_when_call_cost_is_zero,
+        ),
+        TestCase(
+            name="actions/fractional-raise-rounds-down-to-int-chips",
+            description=(
+                "Verify a fractional pot raise is truncated to an integer number of chips before application.\n"
+                "This protects integer chip accounting and ensures pot-sized action ids have deterministic semantics.\n"
+                "It also confirms the resulting highest bet and pot size reflect the rounded amount."
+            ),
+            run=state_contracts.test_execute_actions_fractional_raise_rounds_down_to_int_chips,
+        ),
+        TestCase(
+            name="actions/short-call-allin-caps-at-stack",
+            description=(
+                "Verify a call that costs more chips than the actor has only spends the remaining stack\n"
+                "and marks the actor all-in instead of driving the stack negative.\n"
+                "This protects partial-call all-in accounting."
+            ),
+            run=action_terminal_contracts.test_execute_actions_call_uses_remaining_stack_and_marks_allin,
+        ),
+        TestCase(
+            name="actions/min-raise-reopens-and-updates-raise-size",
+            description=(
+                "Verify a direct min-raise applies the stored last-raise size, reopens action,\n"
+                "and transfers aggressor ownership to the raising seat.\n"
+                "This protects the no-limit betting contract for explicit min-raises."
+            ),
+            run=action_terminal_contracts.test_execute_actions_min_raise_reopens_action_and_updates_raise_size,
+        ),
+        TestCase(
+            name="termination/fold-winner-resolution-is-idempotent",
+            description=(
+                "Verify resolving a fold winner twice does not pay the same pot twice after the first award.\n"
+                "This protects terminal settlement from duplicate invocation bugs.\n"
+                "It also confirms the pot is the sole one-shot payout source."
+            ),
+            run=action_terminal_contracts.test_resolve_fold_winners_is_idempotent_after_pot_is_cleared,
+        ),
+        TestCase(
+            name="termination/no-done-rows-leaves-state-untouched",
+            description=(
+                "Verify showdown resolution is a no-op when no rows are marked done and no runout is required.\n"
+                "This protects mixed batches from accidental board dealing or payouts on live hands.\n"
+                "It also confirms deck positions stay stable."
+            ),
+            run=action_terminal_contracts.test_resolve_terminated_games_noops_when_no_done_rows_need_resolution,
+        ),
+        TestCase(
+            name="termination/turn-runout-preserves-board-and-burns-once",
+            description=(
+                "Verify a turn-stage all-in runout keeps the existing flop and turn cards intact,\n"
+                "burns exactly one card, and deals only the river before showdown.\n"
+                "This protects partial-board runout correctness."
+            ),
+            run=action_terminal_contracts.test_resolve_terminated_games_turn_runout_preserves_existing_board_and_burns_once,
+        ),
+        TestCase(
+            name="termination/flop-runout-preserves-flop-and-deals-turn-river",
+            description=(
+                "Verify a flop-stage all-in runout preserves the existing flop,\n"
+                "then deals the turn and river with the correct burn-card pattern.\n"
+                "This protects staged board completion from overwriting public cards."
+            ),
+            run=action_terminal_contracts.test_resolve_terminated_games_flop_runout_preserves_flop_and_deals_turn_then_river,
+        ),
+        TestCase(
+            name="equity/clean-rows-remain-untouched",
+            description=(
+                "Verify equity recomputation updates only dirty rows and leaves already-clean rows unchanged.\n"
+                "This protects the hot-path dirty-bit cache from silently rewriting stable values.\n"
+                "It also confirms dirty rows fall back to the documented preflop baseline when appropriate."
+            ),
+            run=action_terminal_contracts.test_calculate_equities_leaves_clean_rows_untouched,
+        ),
+        TestCase(
+            name="reward/zero-pot-and-zero-call-cost-stays-finite",
+            description=(
+                "Verify fold, call, and raise rewards stay finite and collapse to zero when both the pot\n"
+                "and the outstanding call cost are zero.\n"
+                "This protects the reward path from NaNs and divide-by-zero edge cases."
+            ),
+            run=reward_equity_contracts.test_poker_reward_gpu_zero_pot_and_call_cost_returns_finite_zero_rewards,
+        ),
+        TestCase(
+            name="reward/call-branch-increases-with-equity",
+            description=(
+                "Verify the direct call reward increases as the acting seat's equity increases\n"
+                "while the pot and call cost stay fixed.\n"
+                "This protects monotonic learning signal in the call branch."
+            ),
+            run=reward_equity_contracts.test_poker_reward_gpu_call_reward_increases_with_equity,
+        ),
+        TestCase(
+            name="reward/fold-branch-decreases-with-equity",
+            description=(
+                "Verify the direct fold reward becomes worse as the acting seat's equity increases\n"
+                "while the pot and call cost stay fixed.\n"
+                "This protects monotonic learning signal in the fold branch."
+            ),
+            run=reward_equity_contracts.test_poker_reward_gpu_fold_reward_decreases_with_equity,
+        ),
+        TestCase(
+            name="reward/raise-branch-tracks-equity-vs-fair-share",
+            description=(
+                "Verify the direct raise reward is negative below the fair-share equity threshold\n"
+                "and positive above it for the same multiway pot.\n"
+                "This protects the intended aggressiveness incentive in the raise branch."
+            ),
+            run=reward_equity_contracts.test_poker_reward_gpu_raise_reward_tracks_equity_vs_fair_share,
+        ),
+        TestCase(
+            name="equity/postflop-rows-stay-bounded-and-rank-river-strength",
+            description=(
+                "Verify mixed flop, turn, and river equity calculations stay within the normalized [0, 1] range\n"
+                "and that a clearly stronger river hand receives the higher normalized value.\n"
+                "This protects postflop equity normalization across stages."
+            ),
+            run=reward_equity_contracts.test_calculate_equities_postflop_rows_stay_bounded_and_rank_stronger_river_hand_higher,
+        ),
+        TestCase(
+            name="termination/fold-end-clears-round-state",
+            description=(
+                "Verify a fold that ends the hand clears current-round bets, total invested amounts, and highest bet.\n"
+                "This protects reset-free terminal cleanup for rows that finish before showdown.\n"
+                "It also confirms the winner receives the pot exactly once."
+            ),
+            run=action_terminal_contracts.test_step_clears_round_state_after_fold_ends_hand,
+        ),
+        TestCase(
+            name="termination/river-showdown-clears-round-state",
+            description=(
+                "Verify a river showdown step clears current-round bets, total invested amounts, and highest bet\n"
+                "after the hand is settled and the pot is awarded.\n"
+                "This protects post-showdown cleanup for immediately resettable rows."
+            ),
+            run=action_terminal_contracts.test_step_clears_round_state_after_river_showdown,
         ),
         TestCase(
             name="street-actor/flop-starts-left-of-button",
