@@ -54,6 +54,7 @@ STABILITY_BENCHMARK_DEFAULTS = {
 
 
 def run_stability_benchmark(config_overrides: dict[str, object] | None = None) -> dict[str, object]:
+    """Run the fixed poker GPU stability benchmark with torch-native metric aggregation."""
     config = STABILITY_BENCHMARK_DEFAULTS.copy()
     if config_overrides is not None:
         config.update(config_overrides)
@@ -172,10 +173,7 @@ def run_stability_benchmark(config_overrides: dict[str, object] | None = None) -
                     break
             idx += 1
 
-        episode_summary = summarize_episode_stability_metrics(
-            episode_reward=episode_reward_tensor.item(),
-            step_metrics=step_metrics,
-        )
+        episode_summary = summarize_episode_stability_metrics(episode_reward=episode_reward_tensor, step_metrics=step_metrics)
         epoch_rewards.append(episode_summary["reward"])
         epoch_q_means.append(episode_summary["q_mean"])
         epoch_q_mins.append(episode_summary["q_min"])
@@ -188,9 +186,9 @@ def run_stability_benchmark(config_overrides: dict[str, object] | None = None) -
         if (episode + 1) % 5 == 0:
             print(
                 f"Episode {episode + 1:2d}/{config['EPISODES']} | "
-                f"Reward: {episode_summary['reward']:8.2f} | "
-                f"TD Error: {episode_summary['td_error']:6.4f} | "
-                f"Clip Rate: {episode_summary['clip_rate']:4.2f}"
+                f"Reward: {episode_summary['reward'].item():8.2f} | "
+                f"TD Error: {episode_summary['td_error'].item():6.4f} | "
+                f"Clip Rate: {episode_summary['clip_rate'].item():4.2f}"
             )
 
     elapsed = time.time() - start_time
@@ -210,12 +208,12 @@ def run_stability_benchmark(config_overrides: dict[str, object] | None = None) -
     print("\n" + "="*50)
     print("FINAL STABILITY METRICS:")
     print("="*50)
-    print(f"Reward Std Dev (Stability): {final_metrics['reward_std']:.2f}")
-    print(f"TD Error Trend (slope):     {final_metrics['td_error_trend']:.6f} (negative is better)")
-    print(f"Average Gradient Clip Rate: {final_metrics['average_clip_rate']:.4f}")
-    print(f"Q-Value Bounds:             [{final_metrics['q_bounds']['global_min']:.2f}, {final_metrics['q_bounds']['global_max']:.2f}]")
-    print(f"Mean Q-Value:               {final_metrics['q_bounds']['mean_q']:.4f}")
-    print(f"Total Run Time:             {elapsed:.2f}s")
+    print(f"Reward Std Dev (Stability): {final_metrics['reward_std'].item():.2f}")
+    print(f"TD Error Trend (slope):     {final_metrics['td_error_trend'].item():.6f} (negative is better)")
+    print(f"Average Gradient Clip Rate: {final_metrics['average_clip_rate'].item():.4f}")
+    print(f"Q-Value Bounds:             [{final_metrics['q_bounds']['global_min'].item():.2f}, {final_metrics['q_bounds']['global_max'].item():.2f}]")
+    print(f"Mean Q-Value:               {final_metrics['q_bounds']['mean_q'].item():.4f}")
+    print(f"Total Run Time:             {final_metrics['total_time_seconds'].item():.2f}s")
     print("="*50)
 
     return final_metrics

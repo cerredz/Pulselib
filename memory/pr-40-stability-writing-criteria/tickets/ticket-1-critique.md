@@ -9,3 +9,6 @@ Post-implementation critique:
 3. The benchmark still needs custom Q-learning-step logic outside `PokerQNetwork.train_step(...)`.
    - This duplication is intentional and constrained by the PR review requirement to leave `environments/Poker/Player.py` unchanged in PR `#40`.
    - Mitigation applied: kept the duplicated logic isolated in `utils/stability.py` with focused unit coverage so future reuse happens through one helper module rather than being copied across scripts.
+
+4. The first helper pass still summarized metrics with NumPy and Python floats, which would have introduced avoidable GPU-to-CPU syncs during training-time aggregation.
+   - Improvement made: replaced NumPy and Python-list aggregation with torch reductions, kept scalar metrics as tensors in `utils/stability.py`, and deferred `.item()` calls to the final logging and print boundary in `scripts/Poker/trainGPU_stability.py`.

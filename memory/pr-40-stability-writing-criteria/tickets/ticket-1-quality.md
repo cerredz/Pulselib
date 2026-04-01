@@ -8,6 +8,7 @@
 
 - No project type checker is configured in the repository root.
 - Added explicit type hints to the new stability helper module, the benchmark entrypoint override surface, and the logger method signatures.
+- Follow-up review refinement: converted the stability helper contract from Python-float summaries to scalar tensor summaries so aggregation stays on the active device until the output boundary.
 
 ## Stage 3 - Unit Tests
 
@@ -16,8 +17,8 @@
 - Coverage from this target:
   - reusable Q-learning stability step metrics
   - empty valid-batch behavior
-  - episode and final metric aggregation
-  - nested logger metric serialization
+  - episode and final metric aggregation with tensor-native summaries
+  - nested logger metric serialization for tensor payloads
   - benchmark entrypoint behavior with small override config
 
 ## Stage 4 - Integration & Contract Tests
@@ -38,6 +39,7 @@ These failures are unrelated to the PR `#40` stability-helper refactor and were 
 
 - The benchmark-path integration test exercised `scripts/Poker/trainGPU_stability.py` end to end with a reduced override config and confirmed:
   - the script accepts override configuration without changing default benchmark behavior
-  - episode metrics are logged through the new helper path
+  - episode metrics are logged through the new helper path without NumPy-based aggregation
   - final stability metrics include reward variance, TD-error trend, Q-bounds, clip-rate, and runtime
   - nested final metrics serialize through `TrainingLogger`
+  - the new `artifacts/pytorch_codebase_best_practices.md` artifact exists with the requested GPU-focused guidance

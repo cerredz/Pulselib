@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pytest
 import torch
 import torch.nn as nn
@@ -112,12 +111,14 @@ def test_run_stability_measured_q_learning_step_returns_metrics_and_updates_targ
     )
 
     assert metrics is not None
-    assert metrics["loss"] == pytest.approx(1.0)
-    assert metrics["td_error"] == pytest.approx(1.0)
-    assert metrics["q_mean"] == pytest.approx(0.0)
-    assert metrics["q_min"] == pytest.approx(0.0)
-    assert metrics["q_max"] == pytest.approx(0.0)
-    assert metrics["clip_rate"] == 1.0
+    assert metrics["loss"].device == states.device
+    assert metrics["td_error"].device == states.device
+    assert metrics["loss"].item() == pytest.approx(1.0)
+    assert metrics["td_error"].item() == pytest.approx(1.0)
+    assert metrics["q_mean"].item() == pytest.approx(0.0)
+    assert metrics["q_min"].item() == pytest.approx(0.0)
+    assert metrics["q_max"].item() == pytest.approx(0.0)
+    assert metrics["clip_rate"].item() == pytest.approx(1.0)
     assert q_network.step_count == 1
     assert torch.equal(q_network.network.weight, q_network.target_network.weight)
 
@@ -142,53 +143,49 @@ def test_run_stability_measured_q_learning_step_returns_none_for_empty_valid_bat
 
 def test_episode_and_final_stability_summaries_aggregate_expected_values() -> None:
     episode_summary = summarize_episode_stability_metrics(
-        episode_reward=12.5,
+        episode_reward=torch.tensor(12.5),
         step_metrics=[
-            {"q_mean": 1.0, "q_min": -2.0, "q_max": 3.0, "td_error": 0.5, "clip_rate": 0.0},
-            {"q_mean": 3.0, "q_min": -1.0, "q_max": 5.0, "td_error": 1.5, "clip_rate": 1.0},
+            {"q_mean": torch.tensor(1.0), "q_min": torch.tensor(-2.0), "q_max": torch.tensor(3.0), "td_error": torch.tensor(0.5), "clip_rate": torch.tensor(0.0)},
+            {"q_mean": torch.tensor(3.0), "q_min": torch.tensor(-1.0), "q_max": torch.tensor(5.0), "td_error": torch.tensor(1.5), "clip_rate": torch.tensor(1.0)},
         ],
     )
 
-    assert episode_summary == {
-        "reward": pytest.approx(12.5),
-        "q_mean": pytest.approx(2.0),
-        "q_min": pytest.approx(-2.0),
-        "q_max": pytest.approx(5.0),
-        "td_error": pytest.approx(1.0),
-        "clip_rate": pytest.approx(0.5),
-    }
+    assert episode_summary["reward"].item() == pytest.approx(12.5)
+    assert episode_summary["q_mean"].item() == pytest.approx(2.0)
+    assert episode_summary["q_min"].item() == pytest.approx(-2.0)
+    assert episode_summary["q_max"].item() == pytest.approx(5.0)
+    assert episode_summary["td_error"].item() == pytest.approx(1.0)
+    assert episode_summary["clip_rate"].item() == pytest.approx(0.5)
 
     final_metrics = calculate_final_stability_metrics(
-        epoch_rewards=[10.0, 14.0],
-        epoch_q_means=[1.0, 3.0],
-        epoch_q_mins=[-2.0, -1.0],
-        epoch_q_maxs=[3.0, 5.0],
-        epoch_td_errors=[2.0, 1.0],
-        epoch_clip_rates=[0.0, 1.0],
+        epoch_rewards=[torch.tensor(10.0), torch.tensor(14.0)],
+        epoch_q_means=[torch.tensor(1.0), torch.tensor(3.0)],
+        epoch_q_mins=[torch.tensor(-2.0), torch.tensor(-1.0)],
+        epoch_q_maxs=[torch.tensor(3.0), torch.tensor(5.0)],
+        epoch_td_errors=[torch.tensor(2.0), torch.tensor(1.0)],
+        epoch_clip_rates=[torch.tensor(0.0), torch.tensor(1.0)],
         elapsed_seconds=7.5,
     )
 
-    assert final_metrics["reward_std"] == pytest.approx(2.0)
-    assert final_metrics["mean_reward"] == pytest.approx(12.0)
-    assert final_metrics["q_bounds"] == {
-        "global_min": pytest.approx(-2.0),
-        "global_max": pytest.approx(5.0),
-        "mean_q": pytest.approx(2.0),
-    }
-    assert final_metrics["td_error_trend"] == pytest.approx(-1.0)
-    assert final_metrics["average_clip_rate"] == pytest.approx(0.5)
-    assert final_metrics["total_time_seconds"] == pytest.approx(7.5)
+    assert final_metrics["reward_std"].item() == pytest.approx(2.0)
+    assert final_metrics["mean_reward"].item() == pytest.approx(12.0)
+    assert final_metrics["q_bounds"]["global_min"].item() == pytest.approx(-2.0)
+    assert final_metrics["q_bounds"]["global_max"].item() == pytest.approx(5.0)
+    assert final_metrics["q_bounds"]["mean_q"].item() == pytest.approx(2.0)
+    assert final_metrics["td_error_trend"].item() == pytest.approx(-1.0)
+    assert final_metrics["average_clip_rate"].item() == pytest.approx(0.5)
+    assert final_metrics["total_time_seconds"].item() == pytest.approx(7.5)
 
 
-def test_training_logger_serializes_nested_numpy_metrics(tmp_path: Path) -> None:
+def test_training_logger_serializes_nested_tensor_metrics(tmp_path: Path) -> None:
     logger = TrainingLogger(str(tmp_path), run_number=1)
     logger.log(
         "nested metrics",
         {
-            "reward_std": np.float64(1.25),
+            "reward_std": torch.tensor(1.25),
             "q_bounds": {
-                "global_min": np.float32(-2.0),
-                "global_max": np.float64(3.5),
+                "global_min": torch.tensor(-2.0),
+                "global_max": torch.tensor(3.5),
             },
         },
     )
@@ -239,11 +236,11 @@ def test_run_stability_benchmark_accepts_small_override_config(monkeypatch: pyte
 
     assert env.reset_calls == 2
     assert env.step_calls == 2
-    assert final_metrics["reward_std"] == pytest.approx(0.0)
-    assert final_metrics["mean_reward"] == pytest.approx(1.5)
-    assert final_metrics["q_bounds"]["global_min"] == pytest.approx(0.0)
-    assert final_metrics["q_bounds"]["global_max"] >= 0.0
-    assert final_metrics["q_bounds"]["mean_q"] >= 0.0
-    assert 0.0 <= final_metrics["average_clip_rate"] <= 1.0
+    assert final_metrics["reward_std"].item() == pytest.approx(0.0)
+    assert final_metrics["mean_reward"].item() == pytest.approx(1.5)
+    assert final_metrics["q_bounds"]["global_min"].item() == pytest.approx(0.0)
+    assert final_metrics["q_bounds"]["global_max"].item() >= 0.0
+    assert final_metrics["q_bounds"]["mean_q"].item() >= 0.0
+    assert 0.0 <= final_metrics["average_clip_rate"].item() <= 1.0
     assert logger.entries[0][0] == "Starting stability benchmark run #1"
     assert logger.entries[-1][0] == "Training Stability Benchmark Completed"

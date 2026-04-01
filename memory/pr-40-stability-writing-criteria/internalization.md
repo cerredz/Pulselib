@@ -79,4 +79,7 @@ Risks:
 - `TrainingLogger.log(...)` currently converts only top-level scalar values; nested dicts containing numpy scalars are likely to fail JSON serialization when final benchmark metrics are logged.
 - The working tree already contains unrelated user artifacts and untracked files, so changes must stay tightly scoped and avoid broad git operations.
 
+Follow-up review note:
+- A later PR `#40` comment tightened the scope further: the reusable stability helpers and benchmark path should avoid NumPy entirely, preserve tensor work on the incoming device, and only convert to Python scalars at the final output boundary. That pushes the implementation toward scalar tensor aggregation rather than Python-float summaries inside the training loop.
+
 Phase 1 complete
