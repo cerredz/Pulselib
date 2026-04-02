@@ -8,7 +8,9 @@ import torch.nn as nn
 
 from scripts.Poker import trainGPU_performance as performance_script
 from utils.performance import (
+    build_prefixed_deck_batch,
     calculate_final_performance_metrics,
+    calculate_q_seat_positions,
     calculate_rolling_window_averages,
     summarize_episode_performance_metrics,
 )
@@ -58,12 +60,20 @@ class TwoEpisodePerformanceEnv:
         self.active_players = 2
         self.button = torch.tensor([0], dtype=torch.int32)
         self.stages = torch.tensor([0], dtype=torch.int32)
+        self.reset_options: list[dict[str, object]] = []
 
     def reset(self, options: dict[str, object]) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        del options
         self.reset_calls += 1
-        self.button = torch.tensor([0], dtype=torch.int32)
-        self.stages = torch.tensor([0], dtype=torch.int32)
+        self.reset_options.append(dict(options))
+        if self.reset_calls == 1:
+            self.active_players = 2
+            self.button = torch.tensor([0], dtype=torch.int32)
+            self.stages = torch.tensor([0], dtype=torch.int32)
+        else:
+            self.active_players = 3
+            self.button = torch.tensor([1], dtype=torch.int32)
+            self.stages = torch.tensor([0], dtype=torch.int32)
+
         state = torch.zeros((1, 13), dtype=torch.float32)
         state[:, 12] = 0.0
         info = {
@@ -110,11 +120,19 @@ class FakeLogger:
         self.entries.append((message, metrics))
 
 
-def test_calculate_q_seat_positions_uses_button_relative_positions() -> None:
+def test_q_seat_positions_and_prefixed_deck_batches_are_deterministic() -> None:
     buttons = torch.tensor([0, 1, 2], dtype=torch.int32)
-    positions = performance_script.calculate_q_seat_positions(buttons, q_seat=2, active_players=4)
+    positions = calculate_q_seat_positions(buttons, q_seat=2, active_players=4)
 
     assert positions.tolist() == [2, 1, 0]
+
+    first_batch = build_prefixed_deck_batch(n_games=2, seed=17, device=torch.device("cpu"))
+    second_batch = build_prefixed_deck_batch(n_games=2, seed=17, device=torch.device("cpu"))
+    third_batch = build_prefixed_deck_batch(n_games=2, seed=18, device=torch.device("cpu"))
+
+    assert torch.equal(first_batch, second_batch)
+    assert not torch.equal(first_batch, third_batch)
+    assert sorted(first_batch[0].tolist()) == list(range(1, 53))
 
 
 def test_episode_and_final_performance_summaries_aggregate_expected_values() -> None:
@@ -129,6 +147,7 @@ def test_episode_and_final_performance_summaries_aggregate_expected_values() -> 
     assert episode_summary["mean_bb_delta"].item() == pytest.approx(0.5)
     assert episode_summary["hand_win_rate"].item() == pytest.approx(0.5)
     assert episode_summary["hands_completed"].item() == 2
+    assert episode_summary["field_bb_per_100"].item() == pytest.approx(50.0)
 
     rolling_averages = calculate_rolling_window_averages(
         [torch.tensor([1.0, -1.0, 2.0, 3.0], dtype=torch.float32)],
@@ -150,8 +169,18 @@ def test_episode_and_final_performance_summaries_aggregate_expected_values() -> 
             torch.tensor([0, 1, 0], dtype=torch.int64),
             torch.tensor([1], dtype=torch.int64),
         ],
+        hand_player_counts=[
+            torch.tensor([2, 3, 2], dtype=torch.int64),
+            torch.tensor([3], dtype=torch.int64),
+        ],
+        hand_opponent_mix_ids=[
+            torch.tensor([0, 0, 0], dtype=torch.int64),
+            torch.tensor([0], dtype=torch.int64),
+        ],
         elapsed_seconds=7.5,
         rolling_window_size=2,
+        use_prefixed_decks=True,
+        opponent_mix_descriptions={"mix_0": "tight_aggressive+random"},
     )
 
     assert final_metrics["cumulative_reward"].item() == pytest.approx(30.0)
@@ -159,18 +188,27 @@ def test_episode_and_final_performance_summaries_aggregate_expected_values() -> 
     assert final_metrics["reward_improvement"]["slope"].item() == pytest.approx(10.0)
     assert final_metrics["reward_improvement"]["first_to_last_percent_change"].item() == pytest.approx(100.0)
     assert final_metrics["total_bb_won"].item() == pytest.approx(5.0)
+    assert final_metrics["field_bb_per_100"].item() == pytest.approx(125.0)
+    assert final_metrics["paired_field_bb_per_100"].item() == pytest.approx(125.0)
+    assert final_metrics["lcb95_bb_per_100"].item() == pytest.approx(-19.941307, rel=1e-5)
+    assert final_metrics["seat_balanced_bb_per_100"].item() == pytest.approx(125.0)
+    assert final_metrics["paired_prefixed_decks_enabled"] is True
     assert final_metrics["overall_hand_win_rate"].item() == pytest.approx(0.75)
     assert final_metrics["total_hands"].item() == 4
     assert [value.item() for value in final_metrics["rolling_bb_window"]["values"]] == pytest.approx([0.0, 0.5, 2.5])
     assert final_metrics["rolling_bb_window"]["last_average"].item() == pytest.approx(2.5)
     assert final_metrics["street_win_percentages"]["preflop"].item() == pytest.approx(0.25)
-    assert final_metrics["street_win_percentages"]["flop"].item() == pytest.approx(0.0)
     assert final_metrics["street_win_percentages"]["river"].item() == pytest.approx(0.25)
     assert final_metrics["street_win_percentages"]["showdown"].item() == pytest.approx(0.25)
     assert final_metrics["position_win_rates"]["position_0"].item() == pytest.approx(1.0)
     assert final_metrics["position_win_rates"]["position_1"].item() == pytest.approx(0.5)
-    assert final_metrics["position_hand_counts"]["position_0"].item() == 2
-    assert final_metrics["position_hand_counts"]["position_1"].item() == 2
+    assert final_metrics["slice_bb_per_100"]["opponent_mix"]["mix_0"].item() == pytest.approx(125.0)
+    assert final_metrics["slice_bb_per_100"]["player_count"]["players_2"].item() == pytest.approx(150.0)
+    assert final_metrics["slice_bb_per_100"]["street_depth"]["flop"].item() == pytest.approx(-100.0)
+    assert final_metrics["worst_slice_bb_per_100"].item() == pytest.approx(-100.0)
+    assert final_metrics["worst_slice_details"]["family"] == "street_depth"
+    assert final_metrics["worst_slice_details"]["slice"] == "flop"
+    assert final_metrics["opponent_mix_descriptions"]["mix_0"] == "tight_aggressive+random"
     assert final_metrics["total_time_seconds"].item() == pytest.approx(7.5)
 
 
@@ -180,6 +218,11 @@ def test_run_performance_benchmark_accepts_small_override_config(
 ) -> None:
     env = TwoEpisodePerformanceEnv()
     FakeLogger.instances.clear()
+    prefixed_batches = [
+        torch.arange(1, 53, dtype=torch.int32).unsqueeze(0),
+        torch.arange(52, 0, -1, dtype=torch.int32).unsqueeze(0),
+    ]
+    deck_seeds: list[int] = []
 
     monkeypatch.setattr(performance_script, "load_device", lambda: torch.device("cpu"))
     monkeypatch.setattr(
@@ -201,6 +244,13 @@ def test_run_performance_benchmark_accepts_small_override_config(
         lambda state, actions, seat_idx, rotated_agents, rotated_types, device: actions.fill_(2),
     )
 
+    def fake_build_prefixed_deck_batch(*, n_games: int, seed: int, device: torch.device) -> torch.Tensor:
+        del n_games, device
+        deck_seeds.append(seed)
+        return prefixed_batches[len(deck_seeds) - 1].clone()
+
+    monkeypatch.setattr(performance_script, "build_prefixed_deck_batch", fake_build_prefixed_deck_batch)
+
     final_metrics = performance_script.run_performance_benchmark(
         {
             "NUM_PLAYERS": 0,
@@ -210,6 +260,7 @@ def test_run_performance_benchmark_accepts_small_override_config(
             "ACTION_SPACE": 13,
             "AGENT_STRINGS": [],
             "ROLLING_WINDOW_SIZE": 2,
+            "DECK_SEED": 11,
             "LOG_DIR": str(tmp_path / "logs"),
         }
     )
@@ -218,14 +269,25 @@ def test_run_performance_benchmark_accepts_small_override_config(
 
     assert env.reset_calls == 2
     assert env.step_calls == 2
+    assert deck_seeds == [11, 12]
+    assert torch.equal(env.reset_options[0]["prefixed_decks"], prefixed_batches[0])
+    assert torch.equal(env.reset_options[1]["prefixed_decks"], prefixed_batches[1])
     assert final_metrics["cumulative_reward"].item() == pytest.approx(2.0)
     assert final_metrics["reward_improvement"]["slope"].item() == pytest.approx(-1.0)
     assert final_metrics["reward_improvement"]["first_to_last_percent_change"].item() == pytest.approx(-66.666666, rel=1e-5)
-    assert final_metrics["total_bb_won"].item() == pytest.approx(1.0)
+    assert final_metrics["field_bb_per_100"].item() == pytest.approx(50.0)
+    assert final_metrics["paired_field_bb_per_100"].item() == pytest.approx(50.0)
+    assert final_metrics["seat_balanced_bb_per_100"].item() == pytest.approx(50.0)
+    assert final_metrics["paired_prefixed_decks_enabled"] is True
     assert final_metrics["rolling_bb_window"]["last_average"].item() == pytest.approx(0.5)
     assert final_metrics["street_win_percentages"]["preflop"].item() == pytest.approx(0.5)
     assert final_metrics["street_win_percentages"]["showdown"].item() == pytest.approx(0.0)
-    assert final_metrics["position_win_rates"]["position_0"].item() == pytest.approx(0.5)
-    assert final_metrics["position_hand_counts"]["position_0"].item() == 2
+    assert final_metrics["position_win_rates"]["position_0"].item() == pytest.approx(1.0)
+    assert final_metrics["position_win_rates"]["position_2"].item() == pytest.approx(0.0)
+    assert final_metrics["slice_bb_per_100"]["player_count"]["players_2"].item() == pytest.approx(200.0)
+    assert final_metrics["slice_bb_per_100"]["player_count"]["players_3"].item() == pytest.approx(-100.0)
+    assert final_metrics["worst_slice_bb_per_100"].item() == pytest.approx(-100.0)
+    assert final_metrics["worst_slice_details"]["slice"] in {"players_3", "showdown", "position_2"}
+    assert final_metrics["paired_deck_seed"] == 11
     assert logger.entries[0][0] == "Starting performance benchmark run #1"
     assert logger.entries[-1][0] == "Training Performance Benchmark Completed"
