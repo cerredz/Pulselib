@@ -5,6 +5,7 @@ import torch
 from environments.Poker.utils import (
     PokerAgentType,
     _build_seat_mask,
+    _get_selected_indices,
     _get_grouped_agent_layout,
     build_actions,
 )
@@ -49,6 +50,14 @@ def test_build_seat_mask_matches_all_requested_seats() -> None:
     mask = _build_seat_mask(curr_players, (1, 2))
 
     assert mask.tolist() == [False, True, True, False, True, True]
+
+
+def test_get_selected_indices_preserves_actor_order() -> None:
+    curr_players = torch.tensor([3, 1, 2, 1, 0, 2], dtype=torch.long)
+
+    selected_indices = _get_selected_indices(curr_players, (1, 2))
+
+    assert selected_indices.tolist() == [1, 2, 3, 5]
 
 
 def test_build_actions_reuses_first_agent_for_shared_types() -> None:

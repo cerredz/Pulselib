@@ -115,6 +115,10 @@ def _build_seat_mask(curr_players: torch.Tensor, seat_indices: tuple[int, ...]) 
         mask |= curr_players == seat_idx
     return mask
 
+
+def _get_selected_indices(curr_players: torch.Tensor, seat_indices: tuple[int, ...]) -> torch.Tensor:
+    return _build_seat_mask(curr_players, seat_indices).nonzero(as_tuple=False).flatten()
+
 def load_agents(num_players: int, agent_types: list, starting_stack: int, action_space_n: int) -> list:
     # Local imports to avoid circular import with Player -> utils
     from agents.TemperalDifference.PokerQLearning import PokerQLearning
@@ -136,15 +140,15 @@ def load_agents(num_players: int, agent_types: list, starting_stack: int, action
 
 def build_actions(state, actions, curr_players, agents, agent_types, device, epsilon=0.1):
     for agent_idx, agent_type, seat_indices in _get_grouped_agent_layout(agent_types):
-        mask = _build_seat_mask(curr_players, seat_indices)
-        if not mask.any():
+        selected_indices = _get_selected_indices(curr_players, seat_indices)
+        if selected_indices.numel() == 0:
             continue
         if agent_type == PokerAgentType.QLEARNING:
-            actions[mask] = agents[agent_idx].get_actions(state[mask])
+            actions[selected_indices] = agents[agent_idx].get_actions(state[selected_indices])
         elif agent_type == PokerAgentType.RANDOM:
-            actions[mask] = torch.randint(0, 13, (curr_players.shape[0],), device=device)[mask]
+            actions[selected_indices] = torch.randint(0, 13, (selected_indices.numel(),), device=device)
         else:
-            actions[mask] = agents[agent_idx].action(state[mask])
+            actions[selected_indices] = agents[agent_idx].action(state[selected_indices])
     
 def load_gpu_agents(device, num_players: int, agent_types: list, starting_stack: int, action_space_n: int) -> list:
     from environments.Poker.Player import HeuristicPlayer, RandomPlayer
