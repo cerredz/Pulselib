@@ -11,6 +11,16 @@ from pathlib import Path
 
 torch.set_float32_matmul_precision('high')
 
+
+def _resolve_weights_path(weights_path) -> Path | None:
+    if weights_path is None:
+        return None
+    normalized = str(weights_path).strip()
+    if not normalized:
+        return None
+    path = Path(normalized)
+    return path if path.is_file() else None
+
 class Player(ABC):
     """
     Stateful object representing a player at the table.
@@ -214,8 +224,9 @@ class PokerQNetwork(nn.Module):
         #    nn.Linear(24, action_dim)
         #)
 
-        if Path(weights_path).exists():
-            model_weights=torch.load(weights_path, map_location=device)
+        resolved_weights_path = _resolve_weights_path(weights_path)
+        if resolved_weights_path is not None:
+            model_weights=torch.load(resolved_weights_path, map_location=device)
             self.network.load_state_dict(model_weights)
 
         self.target_network=copy.deepcopy(self.network)

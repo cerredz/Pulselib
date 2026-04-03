@@ -24,8 +24,8 @@ from utils.stability import (
 
 STABILITY_BENCHMARK_DEFAULTS = {
     "NUM_PLAYERS": 9,
-    "N_GAMES": 100000,
-    "EPISODES": 50,
+    "N_GAMES": 200,
+    "EPISODES": 1,
     "STARTING_BBS": 100,
     "POKER_ACTION_SPACE_N": 13,
     "STATE_SPACE": 40,

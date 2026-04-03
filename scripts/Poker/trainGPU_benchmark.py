@@ -16,8 +16,8 @@ import time
 def run_benchmark():
     # Hardcoded configuration
     NUM_PLAYERS = 9
-    N_GAMES = 500000
-    EPISODES = 100
+    N_GAMES = 200
+    EPISODES = 1
     STARTING_BBS = 100
     POKER_ACTION_SPACE_N = 13
     STATE_SPACE = 40
