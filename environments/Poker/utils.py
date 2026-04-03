@@ -4,8 +4,10 @@ import enum
 import eval7
 import torch
 import torch.optim as optim
+from typing import Iterable
 
 _FULL_RANGE = eval7.HandRange("AA,KK,QQ,JJ,TT,99,88,77,66,55,44,33,22,AKs,AKo,AQs,AQo,AJs,AJo,ATs,ATo,A9s,A9o,A8s,A8o,A7s,A7o,A6s,A6o,A5s,A5o,A4s,A4o,A3s,A3o,A2s,A2o,KQs,KQo,KJs,KJo,KTs,KTo,K9s,K9o,K8s,K8o,K7s,K7o,K6s,K6o,K5s,K5o,K4s,K4o,K3s,K3o,K2s,K2o,QJs,QJo,QTs,QTo,Q9s,Q9o,Q8s,Q8o,Q7s,Q7o,Q6s,Q6o,Q5s,Q5o,Q4s,Q4o,Q3s,Q3o,Q2s,Q2o,JTs,JTo,J9s,J9o,J8s,J8o,J7s,J7o,J6s,J6o,J5s,J5o,J4s,J4o,J3s,J3o,J2s,J2o,T9s,T9o,T8s,T8o,T7s,T7o,T6s,T6o,T5s,T5o,T4s,T4o,T3s,T3o,T2s,T2o,98s,98o,97s,97o,96s,96o,95s,95o,94s,94o,93s,93o,92s,92o,87s,87o,86s,86o,85s,85o,84s,84o,83s,83o,82s,82o,76s,76o,75s,75o,74s,74o,73s,73o,72s,72o,65s,65o,64s,64o,63s,63o,62s,62o,54s,54o,53s,53o,52s,52o,43s,43o,42s,42o,32s,32o")
+_GROUPED_AGENT_LAYOUT_CACHE: dict[tuple["PokerAgentType", ...], tuple[tuple[int, "PokerAgentType", tuple[int, ...]], ...]] = {}
 
 def calculate_equity(player_hand, board, stage, num_active_players, player_status):
     # Fast exits for edge cases
@@ -86,6 +88,33 @@ class PokerAgentType(enum.Enum):
     LOOSE_PASSIVE="loose_passive"
     SMALL_BALL="small_ball"
 
+
+def _get_grouped_agent_layout(agent_types: Iterable[PokerAgentType]) -> tuple[tuple[int, PokerAgentType, tuple[int, ...]], ...]:
+    layout_key = tuple(agent_types)
+    cached_layout = _GROUPED_AGENT_LAYOUT_CACHE.get(layout_key)
+    if cached_layout is not None:
+        return cached_layout
+
+    grouped_indices: dict[PokerAgentType, list[int]] = {}
+    first_agent_index: dict[PokerAgentType, int] = {}
+    for agent_idx, agent_type in enumerate(layout_key):
+        grouped_indices.setdefault(agent_type, []).append(agent_idx)
+        first_agent_index.setdefault(agent_type, agent_idx)
+
+    layout = tuple(
+        (first_agent_index[agent_type], agent_type, tuple(seat_indices))
+        for agent_type, seat_indices in grouped_indices.items()
+    )
+    _GROUPED_AGENT_LAYOUT_CACHE[layout_key] = layout
+    return layout
+
+
+def _build_seat_mask(curr_players: torch.Tensor, seat_indices: tuple[int, ...]) -> torch.Tensor:
+    mask = curr_players == seat_indices[0]
+    for seat_idx in seat_indices[1:]:
+        mask |= curr_players == seat_idx
+    return mask
+
 def load_agents(num_players: int, agent_types: list, starting_stack: int, action_space_n: int) -> list:
     # Local imports to avoid circular import with Player -> utils
     from agents.TemperalDifference.PokerQLearning import PokerQLearning
@@ -106,15 +135,10 @@ def load_agents(num_players: int, agent_types: list, starting_stack: int, action
     return players, types
 
 def build_actions(state, actions, curr_players, agents, agent_types, device, epsilon=0.1):
-    grouped_agents = {}
-    for agent_idx, agent_type in enumerate(agent_types):
-        grouped_agents.setdefault(agent_type, []).append(agent_idx)
-
-    for agent_type, seat_indices in grouped_agents.items():
-        mask = torch.zeros_like(curr_players, dtype=torch.bool)
-        for seat_idx in seat_indices:
-            mask |= curr_players == seat_idx
-        agent_idx = seat_indices[0]
+    for agent_idx, agent_type, seat_indices in _get_grouped_agent_layout(agent_types):
+        mask = _build_seat_mask(curr_players, seat_indices)
+        if not mask.any():
+            continue
         if agent_type == PokerAgentType.QLEARNING:
             actions[mask] = agents[agent_idx].get_actions(state[mask])
         elif agent_type == PokerAgentType.RANDOM:
